@@ -10,7 +10,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Run self-tests
-        run: swift run frostwall-self-test
+      - name: Run 57 edge-case self-tests
+        run: swift run focusvault-self-test
       - name: Build release binary
         run: swift build -c release
+      - name: Run integration flow
+        run: ./scripts/integration-test.sh

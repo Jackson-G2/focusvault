@@ -2,35 +2,35 @@
 import PackageDescription
 
 let package = Package(
-    name: "Frostwall",
+    name: "FocusVault",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .library(
-            name: "FrostwallCore",
-            targets: ["FrostwallCore"]
+            name: "FocusVaultCore",
+            targets: ["FocusVaultCore"]
         ),
         .executable(
-            name: "frostwall",
-            targets: ["FrostwallCLI"]
+            name: "focusvault",
+            targets: ["FocusVaultCLI"]
         ),
         .executable(
-            name: "frostwall-self-test",
-            targets: ["FrostwallSelfTest"]
+            name: "focusvault-self-test",
+            targets: ["FocusVaultSelfTest"]
         )
     ],
     targets: [
         .target(
-            name: "FrostwallCore"
+            name: "FocusVaultCore"
         ),
         .executableTarget(
-            name: "FrostwallCLI",
-            dependencies: ["FrostwallCore"]
+            name: "FocusVaultCLI",
+            dependencies: ["FocusVaultCore"]
         ),
         .executableTarget(
-            name: "FrostwallSelfTest",
-            dependencies: ["FrostwallCore"]
+            name: "FocusVaultSelfTest",
+            dependencies: ["FocusVaultCore"]
         )
     ]
 )
