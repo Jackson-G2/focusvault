@@ -7,7 +7,7 @@ It is intentionally transparent rather than pretending to be unbreakable: a dete
 ## Requirements
 
 - macOS 13 or newer
-- Swift 6 toolchain (Xcode Command Line Tools are enough)
+- Swift 5.9+ toolchain (Xcode Command Line Tools are enough)
 - `sudo` access when managing `/etc/hosts`
 
 ## Build and test
