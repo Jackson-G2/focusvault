@@ -30,7 +30,7 @@ Run the full local verification suite:
 swift run focusvault-self-test
 ```
 
-This runs 57 edge-case tests covering:
+This runs 58 edge-case tests covering:
 
 - Empty, missing, large, Unicode, LF, and CRLF hosts files
 - Exact round-trip restoration, including files without final newlines
@@ -41,6 +41,14 @@ This runs 57 edge-case tests covering:
 - Legacy Frostwall migration
 - Permission preservation and write/read failures
 - 100 repeated block/unblock cycles
+
+Run the selective YouTube channel-vault tests too:
+
+```sh
+node BrowserExtension/tests/policy.test.js
+```
+
+The extension policy suite covers 42 cases including official channel IDs, handles, impersonators, channel URL variants, watch-page owner checks, Shorts, live pages, shortened URLs, search/feed blocking, malformed configuration, and fail-closed behavior.
 
 Build the release binary:
 
@@ -100,6 +108,21 @@ sudo focusvault block \
 
 The custom domain list is written into the same marked section, so `focusvault unblock` removes it safely.
 
+## Selective YouTube channel vault
+
+The native `/etc/hosts` mode blocks all YouTube. If you want YouTube to remain available only for productive channels, use the browser extension instead:
+
+1. Open `BrowserExtension/README.md` and load the folder as an unpacked extension in Chrome, Edge, Brave, or another Chromium browser.
+2. Keep the extension enabled.
+3. The default allowlist is:
+   - Alex Hormozi — `@AlexHormozi`
+   - MoreMozi — `@MoreMozi`
+4. Use the extension settings to add another exact channel handle or channel ID when needed.
+
+Channel-vault mode blocks YouTube home, search, recommendations, playlists, subscriptions, Shorts from unknown channels, and videos whose owner is not allowlisted. It checks the exact channel handle or channel ID, so lookalike impersonator channels are not accepted.
+
+Do not run `sudo focusvault block` at the same time as the channel extension: the hosts-file mode will block the entire YouTube domain, including the allowed channels.
+
 ## Test without touching `/etc/hosts`
 
 Every command accepts `--hosts-file`, which makes manual testing safe:
@@ -131,6 +154,7 @@ rm "$tmp_hosts"
 focusvault block      Engage the focus vault for YouTube.
 focusvault unblock    Open the vault and remove its managed section.
 focusvault status     Show whether the vault is engaged.
+focusvault allowlist  Show the default selective YouTube channels.
 focusvault version    Print the installed version.
 ```
 

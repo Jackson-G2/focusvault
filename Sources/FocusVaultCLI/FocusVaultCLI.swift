@@ -29,6 +29,7 @@ private enum Command {
     case block
     case unblock
     case status
+    case allowlist
     case help
     case version
 }
@@ -66,6 +67,8 @@ private struct FocusVaultCLI {
             command = .unblock
         case "status":
             command = .status
+        case "allowlist", "channels":
+            command = .allowlist
         case "help", "--help", "-h":
             return helpArguments()
         case "version", "--version", "-v":
@@ -178,6 +181,12 @@ private struct FocusVaultCLI {
             let blocked = try blocker.isBlocked()
             print(blocked ? "blocked" : "unblocked")
             print("FocusVault hosts file: \(arguments.hostsFileURL.path)")
+        case .allowlist:
+            print("FocusVault YouTube channel vault defaults:")
+            for channel in YouTubeChannelDefaults.channels {
+                print("- \(channel.name) \(channel.displayHandle) [\(channel.channelID)]")
+            }
+            print("Use the BrowserExtension mode to allow these channels while blocking other YouTube pages.")
         }
     }
 
@@ -191,12 +200,14 @@ private struct FocusVaultCLI {
               block      Engage the focus vault for YouTube.
               unblock    Open the vault and remove its managed section.
               status     Show whether the vault is engaged.
+              allowlist  Show the default YouTube channels allowed by channel-vault mode.
               version    Print the installed version.
 
             Usage:
               focusvault block [--domain DOMAIN ...] [--hosts-file PATH] [--dry-run]
               focusvault unblock [--hosts-file PATH]
               focusvault status [--hosts-file PATH]
+              focusvault allowlist
               focusvault version
 
             By default FocusVault manages a marked section in /etc/hosts for YouTube.

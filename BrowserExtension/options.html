@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FocusVault channel settings</title>
+    <link rel="stylesheet" href="ui.css">
+  </head>
+  <body>
+    <main class="options-page">
+      <p class="eyebrow">FOCUSVAULT · SETTINGS</p>
+      <h1>Allowed YouTube channels</h1>
+      <p class="copy">FocusVault blocks YouTube unless the current page belongs to one of these channels. Keep the list intentional so your vault stays useful.</p>
+      <label for="channel-list">One channel per line</label>
+      <textarea id="channel-list" rows="8" spellcheck="false"></textarea>
+      <p class="format">Format: <code>Name | @handle | channel ID</code>. A handle or channel ID alone also works.</p>
+      <div class="actions">
+        <button id="save" type="button">Save allowlist</button>
+        <button id="reset" class="secondary" type="button">Reset defaults</button>
+      </div>
+      <p id="message" class="message" role="status"></p>
+      <p class="fine-print">Default channels: Alex Hormozi and MoreMozi. Vault in. Get work done.</p>
+    </main>
+    <script src="policy.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

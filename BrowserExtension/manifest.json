@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "FocusVault — YouTube Channel Vault",
+  "version": "0.3.0",
+  "description": "Allow only your chosen YouTube channels so you can vault in and get work done.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://youtu.be/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "FocusVault channel vault",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtu.be/*"
+      ],
+      "js": [
+        "policy.js",
+        "content.js"
+      ],
+      "css": [
+        "guard.css"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "blocked.html",
+        "blocked.css",
+        "blocked.js"
+      ],
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtu.be/*"
+      ]
+    }
+  ]
+}

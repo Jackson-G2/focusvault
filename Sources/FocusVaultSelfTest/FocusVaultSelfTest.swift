@@ -112,6 +112,14 @@ private func testDefaultBlockContainsAllDomains() throws {
     }
 }
 
+private func testDefaultYouTubeChannelAllowlist() throws {
+    try checkEqual(YouTubeChannelDefaults.channels.count, 2, "unexpected default YouTube channel count")
+    try checkEqual(YouTubeChannelDefaults.channels[0].displayHandle, "@AlexHormozi", "Alex Hormozi default handle changed")
+    try checkEqual(YouTubeChannelDefaults.channels[0].channelID, "UCUyDOdBWhC1MCxEjC46d-zw", "Alex Hormozi default ID changed")
+    try checkEqual(YouTubeChannelDefaults.channels[1].displayHandle, "@MoreMozi", "MoreMozi default handle changed")
+    try checkEqual(YouTubeChannelDefaults.channels[1].channelID, "UCrvchO1h6lWZAuGaa1LqX9Q", "MoreMozi default ID changed")
+}
+
 private func testEmptyExistingFile() throws {
     try withFixture(initial: "") { hostsFile in
         let blocker = try FocusVaultBlocker(hostsFileURL: hostsFile)
@@ -586,6 +594,7 @@ private struct FocusVaultSelfTest {
     static func main() {
         let tests: [(String, () throws -> Void)] = [
             ("default block contains all domains", testDefaultBlockContainsAllDomains),
+            ("default YouTube channel allowlist", testDefaultYouTubeChannelAllowlist),
             ("empty existing file", testEmptyExistingFile),
             ("missing hosts file creation", testMissingHostsFileCreated),
             ("preserve no final newline", testPreservesNoFinalNewline),
