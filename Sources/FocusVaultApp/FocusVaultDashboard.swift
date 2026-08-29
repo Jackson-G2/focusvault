@@ -203,13 +203,21 @@ struct FocusVaultDashboard: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background {
+#if swift(>=6.0)
             if #available(macOS 26.0, *) {
                 Color.clear.glassEffect(.regular, in: .rect(cornerRadius: 15))
             } else {
-                RoundedRectangle(cornerRadius: 15)
-                    .fill(.white.opacity(0.07))
+                fallbackChannelBackground
             }
+#else
+            fallbackChannelBackground
+#endif
         }
+    }
+
+    private var fallbackChannelBackground: some View {
+        RoundedRectangle(cornerRadius: 15)
+            .fill(.white.opacity(0.07))
     }
 
     private var fullVaultCard: some View {

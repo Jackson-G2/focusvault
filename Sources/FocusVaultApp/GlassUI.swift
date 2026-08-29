@@ -14,17 +14,25 @@ struct GlassCard<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
+#if swift(>=6.0)
         if #available(macOS 26.0, *) {
             content()
                 .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
-            content()
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-                }
+            fallback
         }
+#else
+        fallback
+#endif
+    }
+
+    private var fallback: some View {
+        content()
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+            }
     }
 }
 
@@ -40,6 +48,7 @@ struct GlassButtonStyle: ButtonStyle {
             .padding(.vertical, 11)
             .contentShape(Capsule())
             .background {
+#if swift(>=6.0)
                 if #available(macOS 26.0, *) {
                     Color.clear
                         .glassEffect(
@@ -47,16 +56,23 @@ struct GlassButtonStyle: ButtonStyle {
                             in: .capsule
                         )
                 } else {
-                    Capsule()
-                        .fill(isProminent ? Color.yellow : Color.white.opacity(0.10))
-                        .overlay {
-                            Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1)
-                        }
+                    fallback
                 }
+#else
+                fallback
+#endif
             }
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.88 : 1)
             .animation(.easeOut(duration: 0.16), value: configuration.isPressed)
+    }
+
+    private var fallback: some View {
+        Capsule()
+            .fill(isProminent ? Color.yellow : Color.white.opacity(0.10))
+            .overlay {
+                Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1)
+            }
     }
 }
 
@@ -72,15 +88,23 @@ struct GlassPill: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background {
+#if swift(>=6.0)
                 if #available(macOS 26.0, *) {
                     Color.clear.glassEffect(.regular.tint(tint.opacity(0.18)), in: .capsule)
                 } else {
-                    Capsule()
-                        .fill(tint.opacity(0.13))
-                        .overlay {
-                            Capsule().strokeBorder(tint.opacity(0.3), lineWidth: 1)
-                        }
+                    fallback
                 }
+#else
+                fallback
+#endif
+            }
+    }
+
+    private var fallback: some View {
+        Capsule()
+            .fill(tint.opacity(0.13))
+            .overlay {
+                Capsule().strokeBorder(tint.opacity(0.3), lineWidth: 1)
             }
     }
 }
@@ -95,15 +119,23 @@ struct GlassIcon: View {
             .foregroundStyle(tint)
             .frame(width: 36, height: 36)
             .background {
+#if swift(>=6.0)
                 if #available(macOS 26.0, *) {
                     Color.clear.glassEffect(.regular.tint(tint.opacity(0.18)), in: .circle)
                 } else {
-                    Circle()
-                        .fill(tint.opacity(0.13))
-                        .overlay {
-                            Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1)
-                        }
+                    fallback
                 }
+#else
+                fallback
+#endif
+            }
+    }
+
+    private var fallback: some View {
+        Circle()
+            .fill(tint.opacity(0.13))
+            .overlay {
+                Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1)
             }
     }
 }
@@ -117,6 +149,7 @@ struct GlassGroup<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
+#if swift(>=6.0)
         if #available(macOS 26.0, *) {
             GlassEffectContainer(spacing: 16) {
                 content()
@@ -124,6 +157,9 @@ struct GlassGroup<Content: View>: View {
         } else {
             content()
         }
+#else
+        content()
+#endif
     }
 }
 
