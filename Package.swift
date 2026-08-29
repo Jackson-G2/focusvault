@@ -18,6 +18,10 @@ let package = Package(
         .executable(
             name: "focusvault-self-test",
             targets: ["FocusVaultSelfTest"]
+        ),
+        .executable(
+            name: "focusvault-app",
+            targets: ["FocusVaultApp"]
         )
     ],
     targets: [
@@ -30,6 +34,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "FocusVaultSelfTest",
+            dependencies: ["FocusVaultCore"]
+        ),
+        .executableTarget(
+            name: "FocusVaultApp",
             dependencies: ["FocusVaultCore"]
         )
     ]

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FocusVault — YouTube Channel Vault",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Allow only your chosen YouTube channels so you can vault in and get work done.",
   "permissions": [
     "storage"

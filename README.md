@@ -62,16 +62,35 @@ Run the compiled integration flow:
 ./scripts/integration-test.sh
 ```
 
-## Install
+## Standalone Mac app
 
-From a clone of this repository:
+The recommended entry point is the native `FocusVault.app` dashboard. It uses SwiftUI’s native Liquid Glass interface on macOS 26+ and a material fallback on older supported macOS versions.
+
+Build and open it:
+
+```sh
+make app
+open dist/FocusVault.app
+```
+
+Inside the app:
+
+- `Full Vault` asks macOS for administrator permission, then blocks or unblocks all YouTube domains.
+- `Channel Vault` shows the default productive channels and opens the bundled browser-companion folder for selective filtering in Chrome, Edge, or Brave.
+- The app reads the current full-block status and gives clear success/error feedback.
+
+The full-block mode is genuinely standalone. Selective channel filtering still needs the browser companion because a normal macOS app cannot see the channel owner inside Chrome’s encrypted YouTube page without browser integration.
+
+## Optional command-line mode
+
+The CLI remains available for scripts and Terminal users. From a clone of this repository:
 
 ```sh
 swift build -c release
 sudo install -m 755 .build/release/focusvault /usr/local/bin/focusvault
 ```
 
-## Use FocusVault
+## Use the CLI
 
 Vault in and block the default YouTube domains:
 
@@ -110,14 +129,17 @@ The custom domain list is written into the same marked section, so `focusvault u
 
 ## Selective YouTube channel vault
 
-The native `/etc/hosts` mode blocks all YouTube. If you want YouTube to remain available only for productive channels, use the browser extension instead:
+The native `/etc/hosts` mode blocks all YouTube. If you want YouTube to remain available only for productive channels, use the browser companion from inside the app or load `BrowserExtension/README.md` manually:
 
-1. Open `BrowserExtension/README.md` and load the folder as an unpacked extension in Chrome, Edge, Brave, or another Chromium browser.
-2. Keep the extension enabled.
-3. The default allowlist is:
+1. Open the app and click `Show companion`, or open the `BrowserExtension` directory.
+2. In Chrome, Edge, or Brave, open `chrome://extensions`.
+3. Turn on Developer mode and choose Load unpacked.
+4. Select the bundled `BrowserExtension` directory.
+5. Keep the extension enabled.
+6. The default allowlist is:
    - Alex Hormozi — `@AlexHormozi`
    - MoreMozi — `@MoreMozi`
-4. Use the extension settings to add another exact channel handle or channel ID when needed.
+7. Use the extension settings to add another exact channel handle or channel ID when needed.
 
 Channel-vault mode blocks YouTube home, search, recommendations, playlists, subscriptions, Shorts from unknown channels, and videos whose owner is not allowlisted. It checks the exact channel handle or channel ID, so lookalike impersonator channels are not accepted.
 

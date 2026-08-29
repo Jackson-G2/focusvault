@@ -14,6 +14,8 @@ jobs:
         run: swift run focusvault-self-test
       - name: Build release binary
         run: swift build -c release
+      - name: Package standalone macOS app
+        run: ./scripts/package-app.sh
       - name: Run integration flow
         run: ./scripts/integration-test.sh
       - name: Run 42 channel-vault policy tests

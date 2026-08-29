@@ -25,7 +25,7 @@ public enum FocusVaultError: Error, LocalizedError, Equatable {
 
 public struct FocusVaultBlocker {
     public static let appName = "FocusVault"
-    public static let version = "0.3.0"
+    public static let version = "0.4.0"
 
     public static let defaultDomains = [
         "youtube.com",

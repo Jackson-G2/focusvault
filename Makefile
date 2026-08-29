@@ -1,4 +1,7 @@
-.PHONY: test build integration extension-test
+.PHONY: test build integration extension-test app
+
+app:
+	scripts/package-app.sh
 
 test:
 	swift run focusvault-self-test
