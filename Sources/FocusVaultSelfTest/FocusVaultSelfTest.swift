@@ -15,6 +15,22 @@ private struct Fixture {
 
 private let defaultFixtureContents = "# existing entry\n127.0.0.1 localhost\n"
 
+private func testCalendar() -> Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    calendar.locale = Locale(identifier: "en_US_POSIX")
+    return calendar
+}
+
+private func testDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 12) -> Date {
+    var components = DateComponents()
+    components.year = year
+    components.month = month
+    components.day = day
+    components.hour = hour
+    return testCalendar().date(from: components)!
+}
+
 private func check(_ condition: Bool, _ message: String) throws {
     guard condition else {
         throw SelfTestFailure(message: message)
@@ -86,6 +102,21 @@ private func expectFocusVaultError(
     }
 }
 
+private func expectProductivityLogError(
+    _ work: () throws -> Void,
+    _ message: String,
+    matching predicate: ((ProductivityLogError) -> Bool)? = nil
+) throws {
+    do {
+        try work()
+        throw SelfTestFailure(message: "expected ProductivityLogError: \(message)")
+    } catch let error as ProductivityLogError {
+        if let predicate, !predicate(error) {
+            throw SelfTestFailure(message: "wrong ProductivityLogError for \(message): \(error)")
+        }
+    }
+}
+
 private func expectInvalidDomain(_ value: String) throws {
     try expectFocusVaultError(
         { _ = try FocusVaultBlocker.normalizeDomain(value) },
@@ -118,6 +149,103 @@ private func testDefaultYouTubeChannelAllowlist() throws {
     try checkEqual(YouTubeChannelDefaults.channels[0].channelID, "UCUyDOdBWhC1MCxEjC46d-zw", "Alex Hormozi default ID changed")
     try checkEqual(YouTubeChannelDefaults.channels[1].displayHandle, "@MoreMozi", "MoreMozi default handle changed")
     try checkEqual(YouTubeChannelDefaults.channels[1].channelID, "UCrvchO1h6lWZAuGaa1LqX9Q", "MoreMozi default ID changed")
+}
+
+private func testProductivityLogAggregatesSameDay() throws {
+    let calendar = testCalendar()
+    let date = testDate(2026, 8, 23)
+    var log = ProductivityLog()
+
+    log.record(minutes: 15, at: date, calendar: calendar)
+    log.record(minutes: 45, at: date.addingTimeInterval(3_600), calendar: calendar)
+
+    try checkEqual(log.minutes(on: date, calendar: calendar), 60, "same-day minutes were not aggregated")
+    try checkEqual(log.totalMinutes(inLastDays: 1, endingAt: date, calendar: calendar), 60, "same-day total is wrong")
+}
+
+private func testProductivityLogSeparatesDays() throws {
+    let calendar = testCalendar()
+    let first = testDate(2026, 8, 22)
+    let second = testDate(2026, 8, 23)
+    var log = ProductivityLog()
+
+    log.record(minutes: 20, at: first, calendar: calendar)
+    log.record(minutes: 35, at: second, calendar: calendar)
+
+    try checkEqual(log.minutes(on: first, calendar: calendar), 20, "first day changed")
+    try checkEqual(log.minutes(on: second, calendar: calendar), 35, "second day is wrong")
+    try checkEqual(log.totalMinutes(inLastDays: 2, endingAt: second, calendar: calendar), 55, "two-day total is wrong")
+}
+
+private func testProductivityLogIgnoresNonPositiveMinutes() throws {
+    let calendar = testCalendar()
+    let date = testDate(2026, 8, 23)
+    var log = ProductivityLog()
+
+    log.record(minutes: 0, at: date, calendar: calendar)
+    log.record(minutes: -10, at: date, calendar: calendar)
+
+    try checkEqual(log.minutes(on: date, calendar: calendar), 0, "non-positive minutes were recorded")
+    try checkEqual(log.totalMinutes(inLastDays: 0, endingAt: date, calendar: calendar), 0, "zero-day total is not zero")
+}
+
+private func testProductivityLogClampsOverflow() throws {
+    let calendar = testCalendar()
+    let date = testDate(2026, 8, 23)
+    let key = ProductivityLog.dateKey(for: date, calendar: calendar)
+    var log = ProductivityLog(minutesByDay: [key: Int.max])
+
+    log.record(minutes: 1, at: date, calendar: calendar)
+    try checkEqual(log.minutes(on: date, calendar: calendar), Int.max, "overflow was not clamped")
+}
+
+private func testProductivityStorePersistsAndReloads() throws {
+    let calendar = testCalendar()
+    let date = testDate(2026, 8, 23)
+    let directory = try makeDirectory()
+    let fileURL = directory.appendingPathComponent("nested/productivity.json")
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let store = try ProductivityLogStore(fileURL: fileURL)
+    try store.record(minutes: 90, at: date, calendar: calendar)
+    let reloaded = try ProductivityLogStore(fileURL: fileURL)
+
+    try checkEqual(reloaded.log.minutes(on: date, calendar: calendar), 90, "persisted productivity was not reloaded")
+    try check(FileManager.default.fileExists(atPath: fileURL.path), "productivity file was not created")
+}
+
+private func testProductivityStoreMissingFileStartsEmpty() throws {
+    let directory = try makeDirectory()
+    let fileURL = directory.appendingPathComponent("productivity.json")
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let store = try ProductivityLogStore(fileURL: fileURL)
+    try check(store.log.minutesByDay.isEmpty, "missing productivity file did not start empty")
+    try check(!FileManager.default.fileExists(atPath: fileURL.path), "initializing created an unnecessary file")
+}
+
+private func testProductivityStoreRejectsCorruptFile() throws {
+    let directory = try makeDirectory()
+    let fileURL = directory.appendingPathComponent("productivity.json")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try "not-json".write(to: fileURL, atomically: true, encoding: .utf8)
+
+    try expectProductivityLogError({ _ = try ProductivityLogStore(fileURL: fileURL) }, "corrupt productivity file") { error in
+        if case .unableToDecode = error { return true }
+        return false
+    }
+}
+
+private func testProductivityDateKeyUsesCalendarDay() throws {
+    var calendar = testCalendar()
+    calendar.timeZone = TimeZone(secondsFromGMT: 10 * 60 * 60)!
+    let date = testCalendar().date(from: DateComponents(year: 2026, month: 8, day: 22, hour: 16))!
+
+    try checkEqual(
+        ProductivityLog.dateKey(for: date, calendar: calendar),
+        "2026-08-23",
+        "date key did not use the supplied calendar"
+    )
 }
 
 private func testEmptyExistingFile() throws {
@@ -595,6 +723,14 @@ private struct FocusVaultSelfTest {
         let tests: [(String, () throws -> Void)] = [
             ("default block contains all domains", testDefaultBlockContainsAllDomains),
             ("default YouTube channel allowlist", testDefaultYouTubeChannelAllowlist),
+            ("productivity log same-day aggregation", testProductivityLogAggregatesSameDay),
+            ("productivity log day separation", testProductivityLogSeparatesDays),
+            ("productivity log non-positive values", testProductivityLogIgnoresNonPositiveMinutes),
+            ("productivity log overflow clamp", testProductivityLogClampsOverflow),
+            ("productivity store persistence", testProductivityStorePersistsAndReloads),
+            ("productivity store missing file", testProductivityStoreMissingFileStartsEmpty),
+            ("productivity store corrupt file", testProductivityStoreRejectsCorruptFile),
+            ("productivity date key", testProductivityDateKeyUsesCalendarDay),
             ("empty existing file", testEmptyExistingFile),
             ("missing hosts file creation", testMissingHostsFileCreated),
             ("preserve no final newline", testPreservesNoFinalNewline),

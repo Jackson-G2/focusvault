@@ -30,7 +30,7 @@ Run the full local verification suite:
 swift run focusvault-self-test
 ```
 
-This runs 58 edge-case tests covering:
+This runs 66 edge-case tests covering:
 
 - Empty, missing, large, Unicode, LF, and CRLF hosts files
 - Exact round-trip restoration, including files without final newlines
@@ -77,6 +77,8 @@ Inside the app:
 
 - `Full Vault` asks macOS for administrator permission, then blocks or unblocks all YouTube domains.
 - `Channel Vault` shows the default productive channels and opens the bundled browser-companion folder for selective filtering in Chrome, Edge, or Brave.
+- `Productivity` shows a GitHub-style 13-week green-dot calendar. Each dot is one day; darker green means more active minutes in coding/work apps.
+- The calendar is a personal tracker, not an analysis dashboard. It stores one local daily total, counts only active minutes while FocusVault is running, and ignores idle time.
 - The app reads the current full-block status and gives clear success/error feedback.
 
 The full-block mode is genuinely standalone. Selective channel filtering still needs the browser companion because a normal macOS app cannot see the channel owner inside Chrome’s encrypted YouTube page without browser integration.

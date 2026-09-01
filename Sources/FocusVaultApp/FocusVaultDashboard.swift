@@ -22,6 +22,7 @@ private enum VaultMode: String, CaseIterable {
 
 struct FocusVaultDashboard: View {
     @EnvironmentObject private var model: FocusVaultAppModel
+    @EnvironmentObject private var tracker: ProductivityTracker
     @State private var selectedMode: VaultMode = .channels
 
     var body: some View {
@@ -32,6 +33,7 @@ struct FocusVaultDashboard: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     statusCard
+                    ProductivityCalendar(log: tracker.log)
                     modePicker
                     selectedModeContent
                     footer
@@ -44,6 +46,7 @@ struct FocusVaultDashboard: View {
         .preferredColorScheme(.dark)
         .task {
             model.refresh()
+            tracker.start()
         }
     }
 
@@ -279,7 +282,7 @@ struct FocusVaultDashboard: View {
             }
 
             HStack {
-                Text("FocusVault 0.4.0")
+                Text("FocusVault 0.5.0")
                 Text("•")
                 Text("Free and open source")
                 Spacer()
