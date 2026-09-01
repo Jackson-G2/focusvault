@@ -20,12 +20,22 @@ struct ProductivityCalendar: View {
                         HStack(spacing: 8) {
                             Text("Productivity")
                                 .font(.system(size: 20, weight: .bold, design: .rounded))
+#if swift(>=6.0)
                             if #available(macOS 26.0, *) {
                                 Image(systemName: "lock.fill")
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundStyle(.green)
                                     .glassEffect(.regular.tint(.green.opacity(0.18)), in: .circle)
+                            } else {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.green)
                             }
+#else
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.green)
+#endif
                         }
                         Text("Your personal active-work calendar, kept on this Mac.")
                             .font(.system(size: 12))
