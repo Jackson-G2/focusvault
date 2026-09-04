@@ -21,6 +21,7 @@ It blocks YouTube by adding a clearly marked, reversible section to `/etc/hosts`
 - macOS 13 or newer
 - Swift 5.9+ toolchain (Xcode Command Line Tools are enough)
 - `sudo` access when managing `/etc/hosts`
+- Python 3, `yt-dlp`, and an authenticated Pi CLI for the optional learning guide
 
 ## Build and test
 
@@ -80,12 +81,15 @@ Inside the app:
 - Set the exact task estimate in whole minutes, from 1 to 240, before starting the Task clock. The same clock works for short 10-minute tasks and longer 25-, 50-, or 90-minute stretches.
 - Start the task clock to engage the full vault when needed; pause and resume it around real interruptions without spending paused time.
 - Let the restrained timer and completion moment carry the task; ending early never changes the vault automatically.
+- `Learn next` audits a redacted digest of local Hermes agent sessions, clusters current learning topics with GPT-5.6, researches YouTube transcripts, and opens grounded recommendations with notes and transcript-scoped Q&A.
 - `Full Vault` asks macOS for administrator permission, then blocks or unblocks all YouTube domains.
 - `Channel Vault` opens the bundled browser-companion folder for selective filtering in Chrome, Edge, or Brave.
 - `Rhythm` shows a compact GitHub-style 13-week calendar. Each dot is one day; darker seafoam means more active minutes in coding/work apps.
 - The calendar is a personal tracker, not an analysis dashboard. It stores one local daily total, counts only active minutes while FocusVault is running, and ignores idle time.
 
 The full-block mode is genuinely standalone. Selective channel filtering still needs the browser companion because a normal macOS app cannot see the channel owner inside Chrome’s encrypted YouTube page without browser integration.
+
+The learning guide is on-demand and privacy-bounded. It does not run until clicked, sends only a compact redacted user-message digest and public transcript excerpts to `openai-codex/gpt-5.6-luna`, stores the result locally, and reports an honest partial state when the full vault or network blocks YouTube.
 
 ## Optional command-line mode
 

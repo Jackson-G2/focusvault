@@ -18,6 +18,8 @@ install -m 755 "$ROOT_DIR/.build/release/focusvault-app" "$CONTENTS_DIR/MacOS/$A
 install -m 755 "$ROOT_DIR/.build/release/focusvault" "$CONTENTS_DIR/Resources/focusvault-cli"
 cp "$ROOT_DIR/AppResources/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp -R "$ROOT_DIR/BrowserExtension" "$CONTENTS_DIR/Resources/BrowserExtension"
+mkdir -p "$CONTENTS_DIR/Resources/ResearchAgent"
+cp "$ROOT_DIR/ResearchAgent/recommend.py" "$CONTENTS_DIR/Resources/ResearchAgent/recommend.py"
 
 /usr/bin/plutil -lint "$CONTENTS_DIR/Info.plist"
 /usr/bin/codesign --force --deep --sign - "$APP_DIR"

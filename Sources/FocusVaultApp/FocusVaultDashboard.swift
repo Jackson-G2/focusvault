@@ -4,11 +4,13 @@ import FocusVaultCore
 struct FocusVaultDashboard: View {
     @EnvironmentObject private var model: FocusVaultAppModel
     @EnvironmentObject private var tracker: ProductivityTracker
+    @EnvironmentObject private var learningGuide: VideoResearchModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var intentionDraft = ""
     @State private var taskEstimateText = "40"
     @State private var hasAppeared = false
+    @State private var showingLearningGuide = false
 
     var body: some View {
         ZStack {
@@ -57,6 +59,10 @@ struct FocusVaultDashboard: View {
             intentionDraft = newValue
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.28), value: model.lastError)
+        .sheet(isPresented: $showingLearningGuide) {
+            VideoRecommendationsView()
+                .environmentObject(learningGuide)
+        }
     }
 
     private var topBar: some View {
@@ -90,6 +96,7 @@ struct FocusVaultDashboard: View {
     private var utilityColumn: some View {
         VStack(alignment: .leading, spacing: 20) {
             protectionCard
+            learningGuideCard
             ProductivityCalendar(log: tracker.log)
         }
     }
@@ -354,6 +361,72 @@ struct FocusVaultDashboard: View {
                     .foregroundStyle(Tideglass.coral)
             }
         }
+    }
+
+    private var learningGuideCard: some View {
+        GlassCard(cornerRadius: 20, tint: Tideglass.signal) {
+            HStack(spacing: 12) {
+                GlassIcon(systemName: "sparkles", tint: Tideglass.signal, size: 34)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 7) {
+                        Text("Learn next")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Tideglass.ink)
+                        if learningGuide.isResearching {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(Tideglass.signal)
+                        }
+                    }
+                    Text(learningGuideSubtitle)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Tideglass.muted)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 4)
+
+                if !learningGuide.isResearching {
+                    Button {
+                        if learningGuide.result?.recommendations.isEmpty == false {
+                            showingLearningGuide = true
+                        } else {
+                            learningGuide.research()
+                        }
+                    } label: {
+                        Text(learningGuideActionTitle)
+                    }
+                    .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
+                    .help(learningGuideActionTitle)
+                    .accessibilityLabel(learningGuideActionTitle)
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    private var learningGuideSubtitle: String {
+        if learningGuide.isResearching {
+            return learningGuide.statusText
+        }
+        if let error = learningGuide.researchError {
+            return error
+        }
+        if let result = learningGuide.result, !result.recommendations.isEmpty {
+            return "\(result.recommendations.count) transcript-backed lesson\(result.recommendations.count == 1 ? "" : "s") ready"
+        }
+        if let diagnostic = learningGuide.result?.diagnostics.first {
+            return diagnostic
+        }
+        return "Local agent history → useful video lessons"
+    }
+
+    private var learningGuideActionTitle: String {
+        if learningGuide.result?.recommendations.isEmpty == false {
+            return "Open"
+        }
+        return learningGuide.researchError == nil && learningGuide.result == nil ? "Research" : "Retry"
     }
 
     private var protectionCard: some View {

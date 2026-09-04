@@ -10,7 +10,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Run 66 core edge-case self-tests
+      - name: Run learning researcher tests
+        run: python3 -m unittest discover -s ResearchAgent/tests -v
+      - name: Run 70 core edge-case self-tests
         run: swift run focusvault-self-test
       - name: Build release binary
         run: swift build -c release

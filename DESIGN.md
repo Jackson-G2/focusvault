@@ -76,6 +76,27 @@ Preset profiles such as “deep work,” “reading,” or automatic weekday sch
 
 Why it loses today: the complexity cost is higher than the value of a third control. Revisit only after sessions and intentions prove that users need repeatable automation.
 
+## Session-aware learning guide — selected
+
+The dashboard gets one explicit `Learn next` action. It is an on-demand research workflow, not an always-on recommender. When invoked, a background agent:
+
+1. Reads all available Hermes session databases for the local profile and sibling profiles, across CLI, subagent, cron, API, and other agent sources.
+2. Uses only user-authored session text plus session titles/metadata to build a compact, redacted digest of active goals, work, and learning themes. Tool output, credentials, and raw session transcripts are not sent wholesale.
+3. Uses the GPT-5.6 subscription route (`openai-codex/gpt-5.6-luna`) to cluster the digest into a small set of current learning topics and explain why each topic was selected.
+4. Searches YouTube for candidates, fetches public English captions with `yt-dlp`, and skips videos without usable transcripts or with obvious low-value formats such as compilations and ads.
+5. Sends the public candidate metadata and transcript excerpts to GPT-5.6 for usefulness evaluation. A recommendation must have a source URL, transcript evidence, a concrete “why this helps,” and short notes or further explanation.
+6. Saves the result locally so the user can open the source, read the notes, and ask a follow-up question about a selected transcript.
+
+The result surface should show the topic reason first, then a small ranked list of videos. Q&A is scoped to the selected video transcript and the user’s question; it is not a general chat panel. If YouTube is unavailable because the full vault is engaged, the app reports that honestly instead of weakening the vault or inventing recommendations.
+
+Privacy and trust rules:
+
+- Nothing runs until the user clicks `Learn next`.
+- The user sees that a compact session digest and public transcript excerpts are sent to the configured GPT-5.6 subscription.
+- Store recommendations, transcript excerpts, and Q&A locally; do not add analytics or background collection.
+- Preserve source URLs and transcript availability in the result contract so a recommendation can be checked.
+- Never present a video as helpful when its transcript was unavailable or the evaluator returned no evidence.
+
 ## Emotional interaction model
 
 - **Arrival:** the primary action warms from quiet sea-glass to apricot, the room subtly brightens, and the intention becomes the visual anchor.
