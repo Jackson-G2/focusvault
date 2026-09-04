@@ -1,18 +1,6 @@
 import SwiftUI
 import FocusVaultCore
 
-private enum ClockMode: String, CaseIterable {
-    case taskClock
-    case focusTimer
-
-    var title: String {
-        switch self {
-        case .taskClock: return "Task clock"
-        case .focusTimer: return "Focus timer"
-        }
-    }
-}
-
 struct FocusVaultDashboard: View {
     @EnvironmentObject private var model: FocusVaultAppModel
     @EnvironmentObject private var tracker: ProductivityTracker
@@ -20,11 +8,7 @@ struct FocusVaultDashboard: View {
 
     @State private var intentionDraft = ""
     @State private var taskEstimateText = "40"
-    @State private var clockMode: ClockMode = .taskClock
-    @State private var selectedFocusDuration = 50
     @State private var hasAppeared = false
-
-    private let focusDurations = [25, 50, 90]
 
     var body: some View {
         ZStack {
@@ -148,10 +132,12 @@ struct FocusVaultDashboard: View {
     private var taskClockCard: some View {
         GlassCard(
             cornerRadius: 26,
-            tint: isClockRunning ? Tideglass.signal : Tideglass.seafoam
+            tint: (model.sessionPhase == .active || model.sessionPhase == .paused)
+                ? Tideglass.signal
+                : Tideglass.seafoam
         ) {
             VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .center) {
+                HStack(alignment: .firstTextBaseline) {
                     HStack(spacing: 9) {
                         FocusPulse(
                             isActive: model.sessionPhase == .active,
@@ -162,13 +148,11 @@ struct FocusVaultDashboard: View {
                             .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundStyle(Tideglass.ink)
                     }
-                    Spacer(minLength: 8)
+                    Spacer()
                     if model.sessionPhase == .active || model.sessionPhase == .paused {
                         Text("\(Int(model.sessionDuration / 60)) min")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(Tideglass.muted)
-                    } else {
-                        clockModeToggle
                     }
                 }
 
@@ -182,7 +166,7 @@ struct FocusVaultDashboard: View {
     private var taskClockContent: some View {
         switch model.sessionPhase {
         case .ready:
-            readyClockContent
+            taskClockReadyContent
 
         case .active:
             HStack(alignment: .center, spacing: 20) {
@@ -271,22 +255,14 @@ struct FocusVaultDashboard: View {
                     }
                 }
 
-                Button(completedActionTitle) {
-                    startSelectedClock()
+                Button {
+                    startTaskClock()
+                } label: {
+                    startTaskButtonLabel(defaultTitle: "Start another task")
                 }
                 .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
-                .disabled(model.isBusy || !canStartSelectedClock)
+                .disabled(model.isBusy || taskEstimateMinutes == nil)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var readyClockContent: some View {
-        switch clockMode {
-        case .taskClock:
-            taskClockReadyContent
-        case .focusTimer:
-            focusTimerReadyContent
         }
     }
 
@@ -313,87 +289,14 @@ struct FocusVaultDashboard: View {
 
             estimateField
 
-            Button("Start task") {
-                startSelectedClock()
+            Button {
+                startTaskClock()
+            } label: {
+                startTaskButtonLabel(defaultTitle: "Start task")
             }
             .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
-            .disabled(model.isBusy || !canStartSelectedClock)
+            .disabled(model.isBusy || taskEstimateMinutes == nil)
         }
-    }
-
-    private var focusTimerReadyContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 18) {
-                SessionDial(
-                    progress: 0,
-                    seconds: selectedFocusDuration * 60,
-                    state: .ready,
-                    reduceMotion: reduceMotion
-                )
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Choose a quiet stretch.")
-                        .font(.system(size: 21, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Tideglass.ink)
-                    Text(model.isSystemBlocked ? "The vault is already ready." : "Starting will engage the full vault.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Tideglass.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            HStack(spacing: 8) {
-                ForEach(focusDurations, id: \.self) { minutes in
-                    focusDurationButton(minutes)
-                }
-            }
-
-            Button("Start focus") {
-                startSelectedClock()
-            }
-            .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
-            .disabled(model.isBusy)
-        }
-    }
-
-    private func focusDurationButton(_ minutes: Int) -> some View {
-        Button {
-            selectedFocusDuration = minutes
-        } label: {
-            Text("\(minutes)m")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(selectedFocusDuration == minutes ? Tideglass.canvas : Tideglass.muted)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
-                .background {
-                    Capsule()
-                        .fill(selectedFocusDuration == minutes ? Tideglass.signal : Tideglass.elevated.opacity(0.46))
-                }
-                .overlay {
-                    Capsule()
-                        .strokeBorder(
-                            selectedFocusDuration == minutes ? Tideglass.signal : Tideglass.line,
-                            lineWidth: 1
-                        )
-                }
-        }
-        .buttonStyle(.plain)
-        .disabled(model.isBusy)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: selectedFocusDuration)
-    }
-
-    private var clockModeToggle: some View {
-        Picker("Clock mode", selection: $clockMode) {
-            ForEach(ClockMode.allCases, id: \.self) { mode in
-                Text(mode.title).tag(mode)
-            }
-        }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-        .frame(width: 190)
-        .disabled(isClockRunning)
-        .accessibilityLabel("Clock mode")
-        .help(isClockRunning ? "Clock mode is locked while running" : "Choose task clock or focus timer")
     }
 
     private var estimateField: some View {
@@ -403,13 +306,16 @@ struct FocusVaultDashboard: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Tideglass.muted)
                 Spacer()
-                HStack(spacing: 5) {
+                ZStack(alignment: .trailing) {
                     TextField("40", text: $taskEstimateText)
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .multilineTextAlignment(.trailing)
+                        .multilineTextAlignment(.center)
                         .textFieldStyle(.plain)
-                        .frame(width: 48)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 24)
+                        .padding(.leading, 8)
+                        .padding(.trailing, 24)
                         .onChange(of: taskEstimateText) { newValue in
                             let digits = String(newValue.filter { $0.isNumber }.prefix(3))
                             if digits != newValue {
@@ -419,12 +325,14 @@ struct FocusVaultDashboard: View {
                         .onSubmit {
                             taskEstimateText = String(taskEstimateMinutes ?? 40)
                         }
+
                     Text("min")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(Tideglass.muted)
+                        .padding(.trailing, 10)
+                        .allowsHitTesting(false)
                 }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 8)
+                .frame(width: 82, height: 40)
                 .background {
                     Capsule()
                         .fill(Tideglass.elevated.opacity(0.58))
@@ -435,6 +343,9 @@ struct FocusVaultDashboard: View {
                             )
                         }
                 }
+                .contentShape(Capsule())
+                .help("Edit task estimate in minutes")
+                .accessibilityLabel("Task estimate in minutes")
             }
 
             if taskEstimateMinutes == nil {
@@ -555,42 +466,25 @@ struct FocusVaultDashboard: View {
         (taskEstimateMinutes ?? 0) * 60
     }
 
-    private var canStartSelectedClock: Bool {
-        switch clockMode {
-        case .taskClock:
-            return taskEstimateMinutes != nil
-        case .focusTimer:
-            return true
-        }
-    }
-
-    private var completedActionTitle: String {
-        switch clockMode {
-        case .taskClock: return "Start another task"
-        case .focusTimer: return "Start another focus"
-        }
-    }
-
-    private func startSelectedClock() {
-        let minutes: Int?
-        switch clockMode {
-        case .taskClock:
-            minutes = taskEstimateMinutes
-        case .focusTimer:
-            minutes = selectedFocusDuration
-        }
-
-        guard let minutes else { return }
+    private func startTaskClock() {
+        guard let minutes = taskEstimateMinutes else { return }
         model.startFocusSession(minutes: minutes) { _ in }
     }
 
-    private var isClockRunning: Bool {
-        model.sessionPhase == .active || model.sessionPhase == .paused
+    private func startTaskButtonLabel(defaultTitle: String) -> some View {
+        HStack(spacing: 8) {
+            if model.isBusy {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            Text(model.isBusy ? "Starting…" : defaultTitle)
+        }
+        .frame(minWidth: 108)
     }
 
     private var sessionHeading: String {
         switch model.sessionPhase {
-        case .ready: return clockMode.title
+        case .ready: return "Task clock"
         case .active: return "In focus"
         case .paused: return "Clock paused"
         case .completed: return "Time kept"

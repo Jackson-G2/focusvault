@@ -52,12 +52,7 @@ A task clock begins only after the user sets the exact time the task should take
 
 Why it wins: it turns the existing block into a repeatable timeboxing behavior, gives an estimate a visible finish line, needs no account or setup, and creates the strongest opportunity for emotional arrival / progress / completion moments.
 
-The task card has two modes:
-
-- **Task clock:** enter the exact whole-minute estimate before starting.
-- **Focus timer:** use the quick 25, 50, or 90 minute focus intervals.
-
-Both modes use the same active, paused, completion, and early-stop behavior. The selector is visible in the ready/completed states and locked while a clock is active or paused, so a running commitment cannot be changed underneath the user.
+The task card has one mode by design: an exact Task clock. The old fixed Focus timer is not a separate mode because the same clock can be set to 25, 50, or 90 minutes when those intervals are useful. Removing the duplicate mode avoids a needless choice before the user starts.
 
 #### Task-clock interaction
 

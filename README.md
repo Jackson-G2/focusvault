@@ -77,8 +77,7 @@ open dist/FocusVault.app
 Inside the app:
 
 - Write a short local intention so the protected stretch has a reason.
-- Use the clock toggle to choose either an exact task estimate or the quick 25, 50, or 90 minute focus timer.
-- Set the exact task estimate in whole minutes, from 1 to 240, before starting the task clock.
+- Set the exact task estimate in whole minutes, from 1 to 240, before starting the Task clock. The same clock works for short 10-minute tasks and longer 25-, 50-, or 90-minute stretches.
 - Start the task clock to engage the full vault when needed; pause and resume it around real interruptions without spending paused time.
 - Let the restrained timer and completion moment carry the task; ending early never changes the vault automatically.
 - `Full Vault` asks macOS for administrator permission, then blocks or unblocks all YouTube domains.

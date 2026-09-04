@@ -65,6 +65,7 @@ struct GlassButtonStyle: ButtonStyle {
             .foregroundStyle(isProminent ? Tideglass.canvas : tint)
             .padding(.horizontal, isProminent ? 19 : 12)
             .padding(.vertical, isProminent ? 12 : 9)
+            .frame(minHeight: isProminent ? 40 : 36)
             .contentShape(Capsule())
             .background {
 #if swift(>=6.0)
