@@ -17,9 +17,9 @@ private enum FocusVaultAppError: LocalizedError {
         case let .commandFailed(message):
             return message
         case .sessionAlreadyActive:
-            return "A focus session is already running."
+            return "A task clock is already running."
         case .invalidSessionDuration:
-            return "Choose a focus session between 1 and 240 minutes."
+            return "Choose a task estimate between 1 and 240 minutes."
         case .busy:
             return "FocusVault is already working on that change."
         }
@@ -99,6 +99,7 @@ private enum PrivilegedHelper {
 enum FocusSessionPhase: Equatable {
     case ready
     case active
+    case paused
     case completed
 }
 
@@ -116,7 +117,7 @@ final class FocusVaultAppModel: ObservableObject {
     let defaultChannels = YouTubeChannelDefaults.channels
 
     private let blocker: FocusVaultBlocker
-    private var sessionEndDate: Date?
+    private var taskClock: FocusTaskClock?
     private var sessionTimer: Timer?
 
     private static let intentionKey = "FocusVault.intention"
@@ -165,7 +166,7 @@ final class FocusVaultAppModel: ObservableObject {
     }
 
     func startFocusSession(minutes: Int, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard sessionPhase != .active else {
+        guard sessionPhase != .active && sessionPhase != .paused else {
             let error = FocusVaultAppError.sessionAlreadyActive
             lastError = error.localizedDescription
             completion(.failure(error))
@@ -197,11 +198,40 @@ final class FocusVaultAppModel: ObservableObject {
         }
     }
 
-    func endFocusSession() {
-        guard sessionPhase == .active else { return }
+    func pauseFocusSession() {
+        guard sessionPhase == .active, var taskClock else { return }
+        guard taskClock.pause(at: Date()) else { return }
+
+        self.taskClock = taskClock
         sessionTimer?.invalidate()
         sessionTimer = nil
-        sessionEndDate = nil
+        publish(taskClock)
+        sessionPhase = .paused
+        statusMessage = "Task clock paused."
+    }
+
+    func resumeFocusSession() {
+        guard sessionPhase == .paused, var taskClock else { return }
+        guard taskClock.resume(at: Date()) else { return }
+
+        self.taskClock = taskClock
+        sessionPhase = .active
+        statusMessage = "Focus session in progress."
+        tickSession()
+        guard sessionPhase == .active else { return }
+        sessionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.tickSession()
+        }
+    }
+
+    func endFocusSession() {
+        guard sessionPhase == .active || sessionPhase == .paused else { return }
+        if var taskClock {
+            _ = taskClock.stop(at: Date())
+        }
+        sessionTimer?.invalidate()
+        sessionTimer = nil
+        taskClock = nil
         remainingSessionSeconds = 0
         sessionProgress = 0
         sessionPhase = .ready
@@ -260,10 +290,12 @@ final class FocusVaultAppModel: ObservableObject {
 
     private func beginFocusSession(minutes: Int) {
         sessionTimer?.invalidate()
-        sessionDuration = TimeInterval(minutes * 60)
-        sessionEndDate = Date().addingTimeInterval(sessionDuration)
-        remainingSessionSeconds = minutes * 60
-        sessionProgress = 0
+        guard var taskClock = try? FocusTaskClock(minutes: minutes), taskClock.start(at: Date()) else {
+            lastError = FocusVaultAppError.invalidSessionDuration.localizedDescription
+            return
+        }
+        self.taskClock = taskClock
+        publish(taskClock)
         sessionPhase = .active
         statusMessage = "Focus session in progress."
         tickSession()
@@ -273,19 +305,23 @@ final class FocusVaultAppModel: ObservableObject {
     }
 
     private func tickSession() {
-        guard let sessionEndDate else { return }
-        let secondsRemaining = max(0, Int(ceil(sessionEndDate.timeIntervalSinceNow)))
-        remainingSessionSeconds = secondsRemaining
-        let elapsed = max(0, sessionDuration - sessionEndDate.timeIntervalSinceNow)
-        sessionProgress = min(1, max(0, elapsed / sessionDuration))
+        guard var taskClock else { return }
+        taskClock.update(at: Date())
+        self.taskClock = taskClock
+        publish(taskClock)
 
-        if secondsRemaining == 0 {
+        if taskClock.state == .completed {
             sessionTimer?.invalidate()
             sessionTimer = nil
-            self.sessionEndDate = nil
             sessionPhase = .completed
             sessionProgress = 1
             statusMessage = "You kept the room."
         }
+    }
+
+    private func publish(_ taskClock: FocusTaskClock) {
+        sessionDuration = taskClock.durationSeconds
+        remainingSessionSeconds = taskClock.remainingWholeSeconds
+        sessionProgress = taskClock.progress
     }
 }

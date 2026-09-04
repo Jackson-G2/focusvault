@@ -46,11 +46,21 @@ The dashboard is a single calm workspace, not a settings catalogue:
 
 ## New core features considered
 
-### 1. Quiet focus sessions — selected
+### 1. Task clocks / quiet focus sessions — selected
 
-A timed focus ritual starts the full vault and gives the user one contained stretch of protected attention. The countdown is large and quiet; the vault stays engaged when the timer completes so the user is never surprised by an automatic unblocking or a new administrator prompt.
+A task clock begins only after the user sets the exact time the task should take. A 10, 20, or 40 minute estimate becomes one contained stretch of protected attention, rather than a vague preset. The countdown is large and quiet; the vault stays engaged when the timer completes so the user is never surprised by an automatic unblocking or a new administrator prompt.
 
-Why it wins: it turns the existing block into a repeatable behavior, has immediate value, needs no account or setup, and creates the strongest opportunity for emotional arrival / progress / completion moments.
+Why it wins: it turns the existing block into a repeatable timeboxing behavior, gives an estimate a visible finish line, needs no account or setup, and creates the strongest opportunity for emotional arrival / progress / completion moments.
+
+#### Task-clock interaction
+
+- **Set:** enter a whole-minute estimate from 1–240 before starting. The estimate is the commitment, not a suggested preset.
+- **Start:** starting the clock engages the full vault when it is not already on.
+- **Work:** show exact minutes and seconds remaining with a quiet progress ring.
+- **Pause:** pause when the task is interrupted. Paused time does not consume the estimate.
+- **Resume:** continue from the exact remaining time without changing the original estimate.
+- **Finish:** when the clock reaches zero, show a brief acknowledgement and keep the vault engaged until the user explicitly changes it.
+- **Stop early:** allow an early exit without shame or automatic unblocking; stopping changes only the clock.
 
 ### 2. Personal intention — selected
 
@@ -74,7 +84,7 @@ Why it loses today: the complexity cost is higher than the value of a third cont
 
 ## Content rules
 
-- Use fragments and short verbs: `Start focus`, `Full vault`, `Open vault`, `Browser setup`.
+- Use fragments and short verbs: `Set estimate`, `Start task`, `Pause`, `Resume`, `Open vault`, `Browser setup`.
 - Prefer one meaningful sentence over multiple explanatory paragraphs.
 - Do not repeat the same state in a badge, heading, body, and button.
 - Do not add a button when a row, menu, keyboard return, or direct manipulation is sufficient.

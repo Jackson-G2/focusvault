@@ -7,10 +7,8 @@ struct FocusVaultDashboard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var intentionDraft = ""
-    @State private var selectedDuration = 50
+    @State private var taskEstimateText = "40"
     @State private var hasAppeared = false
-
-    private let sessionDurations = [25, 50, 90]
 
     var body: some View {
         ZStack {
@@ -85,7 +83,7 @@ struct FocusVaultDashboard: View {
     private var focusColumn: some View {
         VStack(alignment: .leading, spacing: 20) {
             intentionCard
-            sessionCard
+            taskClockCard
         }
     }
 
@@ -131,45 +129,52 @@ struct FocusVaultDashboard: View {
         }
     }
 
-    private var sessionCard: some View {
-        GlassCard(cornerRadius: 26, tint: model.sessionPhase == .active ? Tideglass.signal : Tideglass.seafoam) {
+    private var taskClockCard: some View {
+        GlassCard(
+            cornerRadius: 26,
+            tint: isClockRunning ? Tideglass.signal : Tideglass.seafoam
+        ) {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .firstTextBaseline) {
                     HStack(spacing: 9) {
-                        FocusPulse(isActive: model.sessionPhase == .active, isComplete: model.sessionPhase == .completed)
+                        FocusPulse(
+                            isActive: model.sessionPhase == .active,
+                            isPaused: model.sessionPhase == .paused,
+                            isComplete: model.sessionPhase == .completed
+                        )
                         Text(sessionHeading)
                             .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundStyle(Tideglass.ink)
                     }
                     Spacer()
-                    if model.sessionPhase == .active {
+                    if model.sessionPhase == .active || model.sessionPhase == .paused {
                         Text("\(Int(model.sessionDuration / 60)) min")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(Tideglass.muted)
                     }
                 }
 
-                sessionContent
+                taskClockContent
             }
             .padding(24)
         }
     }
 
     @ViewBuilder
-    private var sessionContent: some View {
+    private var taskClockContent: some View {
         switch model.sessionPhase {
         case .ready:
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center, spacing: 18) {
                     SessionDial(
                         progress: 0,
-                        seconds: selectedDuration * 60,
+                        seconds: estimateSeconds,
                         state: .ready,
                         reduceMotion: reduceMotion
                     )
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("One quiet stretch")
+                        Text("Set the time before you start.")
                             .font(.system(size: 21, weight: .semibold, design: .rounded))
                             .foregroundStyle(Tideglass.ink)
                         Text(model.isSystemBlocked ? "The vault is already ready." : "Starting will engage the full vault.")
@@ -179,17 +184,14 @@ struct FocusVaultDashboard: View {
                     }
                 }
 
-                HStack(spacing: 8) {
-                    ForEach(sessionDurations, id: \.self) { minutes in
-                        durationButton(minutes)
-                    }
-                }
+                estimateField
 
-                Button("Start focus") {
-                    model.startFocusSession(minutes: selectedDuration) { _ in }
+                Button("Start task") {
+                    guard let minutes = taskEstimateMinutes else { return }
+                    model.startFocusSession(minutes: minutes) { _ in }
                 }
                 .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
-                .disabled(model.isBusy)
+                .disabled(model.isBusy || taskEstimateMinutes == nil)
             }
 
         case .active:
@@ -212,10 +214,55 @@ struct FocusVaultDashboard: View {
                         .foregroundStyle(Tideglass.muted)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Button("End session") {
-                        model.endFocusSession()
+                    HStack(spacing: 8) {
+                        Button {
+                            model.pauseFocusSession()
+                        } label: {
+                            Label("Pause", systemImage: "pause.fill")
+                        }
+                        .buttonStyle(GlassButtonStyle(tint: Tideglass.signal))
+
+                        Button("End clock") {
+                            model.endFocusSession()
+                        }
+                        .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
                     }
-                    .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
+                }
+            }
+
+        case .paused:
+            HStack(alignment: .center, spacing: 20) {
+                SessionDial(
+                    progress: model.sessionProgress,
+                    seconds: model.remainingSessionSeconds,
+                    state: .paused,
+                    reduceMotion: reduceMotion
+                )
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(model.intention.isEmpty ? "Your place is held." : model.intention)
+                        .font(.system(size: 19, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Tideglass.ink)
+                        .lineLimit(3)
+
+                    Text("The clock is paused. Nothing is being spent.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Tideglass.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            model.resumeFocusSession()
+                        } label: {
+                            Label("Resume", systemImage: "play.fill")
+                        }
+                        .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
+
+                        Button("End clock") {
+                            model.endFocusSession()
+                        }
+                        .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
+                    }
                 }
             }
 
@@ -234,39 +281,63 @@ struct FocusVaultDashboard: View {
                     }
                 }
 
-                Button("Start another focus") {
-                    model.startFocusSession(minutes: selectedDuration) { _ in }
+                Button("Start another task") {
+                    guard let minutes = taskEstimateMinutes else { return }
+                    model.startFocusSession(minutes: minutes) { _ in }
                 }
                 .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
-                .disabled(model.isBusy)
+                .disabled(model.isBusy || taskEstimateMinutes == nil)
             }
         }
     }
 
-    private func durationButton(_ minutes: Int) -> some View {
-        Button {
-            selectedDuration = minutes
-        } label: {
-            Text("\(minutes)m")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(selectedDuration == minutes ? Tideglass.canvas : Tideglass.muted)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
+    private var estimateField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Text("Estimate")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Tideglass.muted)
+                Spacer()
+                HStack(spacing: 5) {
+                    TextField("40", text: $taskEstimateText)
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .multilineTextAlignment(.trailing)
+                        .textFieldStyle(.plain)
+                        .frame(width: 48)
+                        .onChange(of: taskEstimateText) { newValue in
+                            let digits = String(newValue.filter { $0.isNumber }.prefix(3))
+                            if digits != newValue {
+                                taskEstimateText = digits
+                            }
+                        }
+                        .onSubmit {
+                            taskEstimateText = String(taskEstimateMinutes ?? 40)
+                        }
+                    Text("min")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Tideglass.muted)
+                }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
                 .background {
                     Capsule()
-                        .fill(selectedDuration == minutes ? Tideglass.signal : Tideglass.elevated.opacity(0.46))
+                        .fill(Tideglass.elevated.opacity(0.58))
+                        .overlay {
+                            Capsule().strokeBorder(
+                                taskEstimateMinutes == nil ? Tideglass.coral.opacity(0.60) : Tideglass.line,
+                                lineWidth: 1
+                            )
+                        }
                 }
-                .overlay {
-                    Capsule()
-                        .strokeBorder(
-                            selectedDuration == minutes ? Tideglass.signal : Tideglass.line,
-                            lineWidth: 1
-                        )
-                }
+            }
+
+            if taskEstimateMinutes == nil {
+                Text("Enter 1–240 minutes")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Tideglass.coral)
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(model.isBusy)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: selectedDuration)
     }
 
     private var protectionCard: some View {
@@ -368,11 +439,27 @@ struct FocusVaultDashboard: View {
         }
     }
 
+    private var taskEstimateMinutes: Int? {
+        guard let minutes = Int(taskEstimateText), (1...240).contains(minutes) else {
+            return nil
+        }
+        return minutes
+    }
+
+    private var estimateSeconds: Int {
+        (taskEstimateMinutes ?? 0) * 60
+    }
+
+    private var isClockRunning: Bool {
+        model.sessionPhase == .active || model.sessionPhase == .paused
+    }
+
     private var sessionHeading: String {
         switch model.sessionPhase {
-        case .ready: return "Focus session"
+        case .ready: return "Task clock"
         case .active: return "In focus"
-        case .completed: return "Session complete"
+        case .paused: return "Clock paused"
+        case .completed: return "Time kept"
         }
     }
 }
@@ -380,6 +467,7 @@ struct FocusVaultDashboard: View {
 private enum SessionDialState {
     case ready
     case active
+    case paused
 }
 
 private struct SessionDial: View {
@@ -407,14 +495,14 @@ private struct SessionDial: View {
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Tideglass.ink)
-                Text(state == .active ? "remaining" : "minutes")
+                Text(stateLabel)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(Tideglass.muted)
             }
         }
         .frame(width: 138, height: 138)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(state == .active ? "\(timeText) remaining" : "\(timeText) minute focus session")
+        .accessibilityLabel(accessibilityText)
     }
 
     private var timeText: String {
@@ -425,10 +513,30 @@ private struct SessionDial: View {
         }
         return String(format: "%02d:%02d", totalMinutes, remainingSeconds)
     }
+
+    private var stateLabel: String {
+        switch state {
+        case .ready: return "minutes"
+        case .active: return "remaining"
+        case .paused: return "paused"
+        }
+    }
+
+    private var accessibilityText: String {
+        switch state {
+        case .ready:
+            return "\(timeText) minute task estimate"
+        case .active:
+            return "\(timeText) remaining"
+        case .paused:
+            return "\(timeText) paused"
+        }
+    }
 }
 
 private struct FocusPulse: View {
     let isActive: Bool
+    let isPaused: Bool
     let isComplete: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPulsing = false
@@ -436,7 +544,7 @@ private struct FocusPulse: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(isComplete ? Tideglass.seafoam : (isActive ? Tideglass.signal : Tideglass.muted))
+                .fill(isComplete ? Tideglass.seafoam : ((isActive || isPaused) ? Tideglass.signal : Tideglass.muted))
                 .frame(width: 8, height: 8)
             if isActive && !reduceMotion {
                 Circle()

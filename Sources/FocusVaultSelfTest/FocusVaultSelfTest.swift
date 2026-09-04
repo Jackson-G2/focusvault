@@ -717,6 +717,62 @@ private func testEmptyCustomDomainListThrows() throws {
     }
 }
 
+private func testTaskClockAcceptsExactEstimate() throws {
+    let clock = try FocusTaskClock(minutes: 40)
+    try checkEqual(clock.durationSeconds, 2_400, "task clock duration is not exact")
+    try checkEqual(clock.remainingWholeSeconds, 2_400, "task clock initial remainder is wrong")
+    try checkEqual(clock.state, .ready, "new task clock is not ready")
+}
+
+private func testTaskClockRejectsInvalidEstimate() throws {
+    for minutes in [0, -1, 241] {
+        do {
+            _ = try FocusTaskClock(minutes: minutes)
+            throw SelfTestFailure(message: "invalid task estimate was accepted: \(minutes)")
+        } catch let error as FocusTaskClockError {
+            try checkEqual(error, .invalidDuration, "wrong task clock error for \(minutes) minutes")
+        }
+    }
+}
+
+private func testTaskClockPausePreservesRemainder() throws {
+    let start = Date(timeIntervalSinceReferenceDate: 10_000)
+    let pauseDate = start.addingTimeInterval(605)
+    var clock = try FocusTaskClock(minutes: 40)
+
+    try check(clock.start(at: start), "task clock did not start")
+    clock.update(at: pauseDate)
+    try check(clock.pause(at: pauseDate), "task clock did not pause")
+    try checkEqual(clock.state, .paused, "task clock is not paused")
+    try check(abs(clock.remainingSeconds - 1_795) < 0.0001, "pause remainder is not exact")
+
+    let pausedRemainder = clock.remainingSeconds
+    clock.update(at: pauseDate.addingTimeInterval(900))
+    try checkEqual(clock.remainingSeconds, pausedRemainder, "paused time reduced the task clock")
+}
+
+private func testTaskClockResumesCompletesAndStops() throws {
+    let start = Date(timeIntervalSinceReferenceDate: 20_000)
+    var clock = try FocusTaskClock(minutes: 1)
+
+    try check(clock.start(at: start), "one-minute task clock did not start")
+    let pauseDate = start.addingTimeInterval(12.5)
+    try check(clock.pause(at: pauseDate), "one-minute task clock did not pause")
+    let pausedRemainder = clock.remainingSeconds
+    try check(clock.resume(at: pauseDate.addingTimeInterval(90)), "task clock did not resume")
+    clock.update(at: pauseDate.addingTimeInterval(90 + pausedRemainder + 0.1))
+    try checkEqual(clock.state, .completed, "task clock did not complete at zero")
+    try checkEqual(clock.remainingWholeSeconds, 0, "completed task clock has remaining time")
+    try checkEqual(clock.progress, 1, "completed task clock is not at full progress")
+
+    var stoppedClock = try FocusTaskClock(minutes: 10)
+    try check(stoppedClock.start(at: start), "stoppable task clock did not start")
+    stoppedClock.update(at: start.addingTimeInterval(30))
+    try check(stoppedClock.stop(at: start.addingTimeInterval(30)), "task clock did not stop")
+    try checkEqual(stoppedClock.state, .ready, "stopped task clock did not reset to ready")
+    try checkEqual(stoppedClock.remainingWholeSeconds, 600, "stopped task clock did not reset its estimate")
+}
+
 @main
 private struct FocusVaultSelfTest {
     static func main() {
@@ -786,7 +842,11 @@ private struct FocusVaultSelfTest {
             ("unmanaged unblock safety", testUnblockWithoutBlockDoesNotChange),
             ("prefix and suffix preservation", testPrefixAndSuffixRemain),
             ("malformed status rejection", testStatusMalformedThrows),
-            ("empty custom list rejection", testEmptyCustomDomainListThrows)
+            ("empty custom list rejection", testEmptyCustomDomainListThrows),
+            ("task clock exact estimate", testTaskClockAcceptsExactEstimate),
+            ("task clock invalid estimate", testTaskClockRejectsInvalidEstimate),
+            ("task clock pause remainder", testTaskClockPausePreservesRemainder),
+            ("task clock resume, completion, and stop", testTaskClockResumesCompletesAndStops)
         ]
 
         var failures: [(String, String)] = []

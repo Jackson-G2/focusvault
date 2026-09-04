@@ -30,7 +30,7 @@ Run the full local verification suite:
 swift run focusvault-self-test
 ```
 
-This runs 66 edge-case tests covering:
+This runs 70 edge-case tests covering:
 
 - Empty, missing, large, Unicode, LF, and CRLF hosts files
 - Exact round-trip restoration, including files without final newlines
@@ -41,6 +41,7 @@ This runs 66 edge-case tests covering:
 - Legacy Frostwall migration
 - Permission preservation and write/read failures
 - 100 repeated block/unblock cycles
+- Exact task estimates, invalid durations, pause/resume remainder preservation, completion, and early stop reset
 
 Run the selective YouTube channel-vault tests too:
 
@@ -76,8 +77,9 @@ open dist/FocusVault.app
 Inside the app:
 
 - Write a short local intention so the protected stretch has a reason.
-- Choose a 25, 50, or 90 minute focus session. Starting a session engages the full vault when needed.
-- Let the restrained timer and completion moment carry the session; ending early never changes the vault automatically.
+- Set the exact task estimate in whole minutes, from 1 to 240, before starting the clock.
+- Start the task clock to engage the full vault when needed; pause and resume it around real interruptions without spending paused time.
+- Let the restrained timer and completion moment carry the task; ending early never changes the vault automatically.
 - `Full Vault` asks macOS for administrator permission, then blocks or unblocks all YouTube domains.
 - `Channel Vault` opens the bundled browser-companion folder for selective filtering in Chrome, Edge, or Brave.
 - `Rhythm` shows a compact GitHub-style 13-week calendar. Each dot is one day; darker seafoam means more active minutes in coding/work apps.
