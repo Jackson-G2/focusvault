@@ -6,6 +6,9 @@ import FocusVaultCore
 private enum FocusVaultAppError: LocalizedError {
     case bundledHelperMissing
     case commandFailed(String)
+    case sessionAlreadyActive
+    case invalidSessionDuration
+    case busy
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +16,12 @@ private enum FocusVaultAppError: LocalizedError {
             return "The bundled FocusVault helper was not found. Build the app with scripts/package-app.sh."
         case let .commandFailed(message):
             return message
+        case .sessionAlreadyActive:
+            return "A focus session is already running."
+        case .invalidSessionDuration:
+            return "Choose a focus session between 1 and 240 minutes."
+        case .busy:
+            return "FocusVault is already working on that change."
         }
     }
 }
@@ -87,19 +96,39 @@ private enum PrivilegedHelper {
     }
 }
 
+enum FocusSessionPhase: Equatable {
+    case ready
+    case active
+    case completed
+}
+
 final class FocusVaultAppModel: ObservableObject {
     @Published private(set) var isSystemBlocked = false
     @Published private(set) var isBusy = false
     @Published private(set) var lastError: String?
-    @Published private(set) var statusMessage = "Your focus vault is open."
+    @Published private(set) var statusMessage = "Ready when you are."
+    @Published private(set) var intention = ""
+    @Published private(set) var sessionPhase: FocusSessionPhase = .ready
+    @Published private(set) var sessionDuration: TimeInterval = 50 * 60
+    @Published private(set) var remainingSessionSeconds = 0
+    @Published private(set) var sessionProgress = 0.0
 
     let defaultChannels = YouTubeChannelDefaults.channels
 
     private let blocker: FocusVaultBlocker
+    private var sessionEndDate: Date?
+    private var sessionTimer: Timer?
+
+    private static let intentionKey = "FocusVault.intention"
 
     init() {
         blocker = try! FocusVaultBlocker()
+        intention = UserDefaults.standard.string(forKey: Self.intentionKey) ?? ""
         refresh()
+    }
+
+    deinit {
+        sessionTimer?.invalidate()
     }
 
     func refresh() {
@@ -107,8 +136,8 @@ final class FocusVaultAppModel: ObservableObject {
             isSystemBlocked = try blocker.isBlocked()
             if lastError == nil {
                 statusMessage = isSystemBlocked
-                    ? "Full vault engaged — all YouTube is blocked."
-                    : "Your focus vault is open."
+                    ? "Full vault engaged."
+                    : "Ready when you are."
             }
         } catch {
             lastError = error.localizedDescription
@@ -116,29 +145,71 @@ final class FocusVaultAppModel: ObservableObject {
         }
     }
 
-    func toggleFullVault() {
-        guard !isBusy else { return }
-        isBusy = true
-        lastError = nil
-        statusMessage = isSystemBlocked
-            ? "Opening the vault…"
-            : "Engaging the full vault…"
+    func saveIntention(_ value: String) {
+        let normalized = value
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let clipped = String(normalized.prefix(80))
+        guard clipped != intention else { return }
 
-        let action = isSystemBlocked ? "unblock" : "block"
-        PrivilegedHelper.run(action: action) { [weak self] result in
+        intention = clipped
+        if clipped.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.intentionKey)
+        } else {
+            UserDefaults.standard.set(clipped, forKey: Self.intentionKey)
+        }
+    }
+
+    func toggleFullVault() {
+        setFullVault(shouldBlock: !isSystemBlocked, completion: nil)
+    }
+
+    func startFocusSession(minutes: Int, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard sessionPhase != .active else {
+            let error = FocusVaultAppError.sessionAlreadyActive
+            lastError = error.localizedDescription
+            completion(.failure(error))
+            return
+        }
+        guard (1...240).contains(minutes) else {
+            let error = FocusVaultAppError.invalidSessionDuration
+            lastError = error.localizedDescription
+            completion(.failure(error))
+            return
+        }
+
+        lastError = nil
+        if isSystemBlocked {
+            beginFocusSession(minutes: minutes)
+            completion(.success(()))
+            return
+        }
+
+        setFullVault(shouldBlock: true) { [weak self] result in
             guard let self else { return }
-            self.isBusy = false
             switch result {
             case .success:
-                self.refresh()
-                self.statusMessage = self.isSystemBlocked
-                    ? "Full vault engaged — all YouTube is blocked."
-                    : "Your focus vault is open."
+                self.beginFocusSession(minutes: minutes)
+                completion(.success(()))
             case let .failure(error):
-                self.lastError = error.localizedDescription
-                self.statusMessage = "No changes were made."
+                completion(.failure(error))
             }
         }
+    }
+
+    func endFocusSession() {
+        guard sessionPhase == .active else { return }
+        sessionTimer?.invalidate()
+        sessionTimer = nil
+        sessionEndDate = nil
+        remainingSessionSeconds = 0
+        sessionProgress = 0
+        sessionPhase = .ready
+        statusMessage = isSystemBlocked ? "Full vault engaged." : "Ready when you are."
+    }
+
+    func clearError() {
+        lastError = nil
     }
 
     func revealBrowserCompanion() {
@@ -152,7 +223,69 @@ final class FocusVaultAppModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([extensionURL])
     }
 
-    func clearError() {
+    private func setFullVault(
+        shouldBlock: Bool,
+        completion: ((Result<Void, Error>) -> Void)?
+    ) {
+        guard !isBusy else {
+            let error = FocusVaultAppError.busy
+            lastError = error.localizedDescription
+            completion?(.failure(error))
+            return
+        }
+
+        isBusy = true
         lastError = nil
+        statusMessage = shouldBlock ? "Engaging the full vault…" : "Opening the full vault…"
+        let action = shouldBlock ? "block" : "unblock"
+
+        PrivilegedHelper.run(action: action) { [weak self] result in
+            guard let self else { return }
+            self.isBusy = false
+
+            switch result {
+            case .success:
+                self.refresh()
+                self.statusMessage = self.isSystemBlocked
+                    ? "Full vault engaged."
+                    : "Ready when you are."
+                completion?(.success(()))
+            case let .failure(error):
+                self.lastError = error.localizedDescription
+                self.statusMessage = "No changes were made."
+                completion?(.failure(error))
+            }
+        }
+    }
+
+    private func beginFocusSession(minutes: Int) {
+        sessionTimer?.invalidate()
+        sessionDuration = TimeInterval(minutes * 60)
+        sessionEndDate = Date().addingTimeInterval(sessionDuration)
+        remainingSessionSeconds = minutes * 60
+        sessionProgress = 0
+        sessionPhase = .active
+        statusMessage = "Focus session in progress."
+        tickSession()
+        sessionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.tickSession()
+        }
+    }
+
+    private func tickSession() {
+        guard let sessionEndDate else { return }
+        let secondsRemaining = max(0, Int(ceil(sessionEndDate.timeIntervalSinceNow)))
+        remainingSessionSeconds = secondsRemaining
+        let elapsed = max(0, sessionDuration - sessionEndDate.timeIntervalSinceNow)
+        sessionProgress = min(1, max(0, elapsed / sessionDuration))
+
+        if secondsRemaining == 0 {
+            sessionTimer?.invalidate()
+            sessionTimer = nil
+            self.sessionEndDate = nil
+            sessionPhase = .completed
+            sessionProgress = 1
+            statusMessage = "You kept the room."
+        }
     }
 }

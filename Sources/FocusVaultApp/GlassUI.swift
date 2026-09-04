@@ -1,14 +1,29 @@
 import SwiftUI
 
+enum Tideglass {
+    static let canvas = Color(red: 0.027, green: 0.106, blue: 0.125)
+    static let surface = Color(red: 0.055, green: 0.169, blue: 0.184)
+    static let elevated = Color(red: 0.078, green: 0.231, blue: 0.231)
+    static let ink = Color(red: 0.957, green: 0.941, blue: 0.910)
+    static let muted = Color(red: 0.616, green: 0.718, blue: 0.694)
+    static let signal = Color(red: 1.000, green: 0.722, blue: 0.416)
+    static let seafoam = Color(red: 0.655, green: 0.851, blue: 0.706)
+    static let coral = Color(red: 0.957, green: 0.518, blue: 0.416)
+    static let line = Color(red: 0.725, green: 0.882, blue: 0.827).opacity(0.12)
+}
+
 struct GlassCard<Content: View>: View {
     private let cornerRadius: CGFloat
+    private let tint: Color
     private let content: () -> Content
 
     init(
-        cornerRadius: CGFloat = 26,
+        cornerRadius: CGFloat = 24,
+        tint: Color = Tideglass.surface,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.cornerRadius = cornerRadius
+        self.tint = tint
         self.content = content
     }
 
@@ -17,7 +32,7 @@ struct GlassCard<Content: View>: View {
 #if swift(>=6.0)
         if #available(macOS 26.0, *) {
             content()
-                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+                .glassEffect(.regular.tint(tint.opacity(0.18)), in: .rect(cornerRadius: cornerRadius))
         } else {
             fallback
         }
@@ -31,28 +46,34 @@ struct GlassCard<Content: View>: View {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+                    .foregroundColor(tint.opacity(0.20))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .stroke(Tideglass.line, lineWidth: 1)
+                    }
             }
     }
 }
 
 struct GlassButtonStyle: ButtonStyle {
-    var tint: Color = .white
+    var tint: Color = Tideglass.signal
     var isProminent = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(isProminent ? .black : tint)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 11)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(isProminent ? Tideglass.canvas : tint)
+            .padding(.horizontal, isProminent ? 19 : 12)
+            .padding(.vertical, isProminent ? 12 : 9)
             .contentShape(Capsule())
             .background {
 #if swift(>=6.0)
                 if #available(macOS 26.0, *) {
                     Color.clear
                         .glassEffect(
-                            isProminent ? .regular.tint(.yellow).interactive() : .regular.interactive(),
+                            isProminent
+                                ? .regular.tint(tint.opacity(0.92)).interactive()
+                                : .regular.tint(tint.opacity(0.14)).interactive(),
                             in: .capsule
                         )
                 } else {
@@ -69,9 +90,9 @@ struct GlassButtonStyle: ButtonStyle {
 
     private var fallback: some View {
         Capsule()
-            .fill(isProminent ? Color.yellow : Color.white.opacity(0.10))
+            .fill(isProminent ? tint : tint.opacity(0.12))
             .overlay {
-                Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                Capsule().strokeBorder(tint.opacity(isProminent ? 0.24 : 0.28), lineWidth: 1)
             }
     }
 }
@@ -83,14 +104,14 @@ struct GlassPill: View {
 
     var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(tint)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .background {
 #if swift(>=6.0)
                 if #available(macOS 26.0, *) {
-                    Color.clear.glassEffect(.regular.tint(tint.opacity(0.18)), in: .capsule)
+                    Color.clear.glassEffect(.regular.tint(tint.opacity(0.16)), in: .capsule)
                 } else {
                     fallback
                 }
@@ -102,9 +123,9 @@ struct GlassPill: View {
 
     private var fallback: some View {
         Capsule()
-            .fill(tint.opacity(0.13))
+            .fill(tint.opacity(0.12))
             .overlay {
-                Capsule().strokeBorder(tint.opacity(0.3), lineWidth: 1)
+                Capsule().strokeBorder(tint.opacity(0.28), lineWidth: 1)
             }
     }
 }
@@ -112,16 +133,17 @@ struct GlassPill: View {
 struct GlassIcon: View {
     let systemName: String
     let tint: Color
+    var size: CGFloat = 36
 
     var body: some View {
         Image(systemName: systemName)
-            .font(.system(size: 15, weight: .bold))
+            .font(.system(size: size * 0.42, weight: .bold))
             .foregroundStyle(tint)
-            .frame(width: 36, height: 36)
+            .frame(width: size, height: size)
             .background {
 #if swift(>=6.0)
                 if #available(macOS 26.0, *) {
-                    Color.clear.glassEffect(.regular.tint(tint.opacity(0.18)), in: .circle)
+                    Color.clear.glassEffect(.regular.tint(tint.opacity(0.16)), in: .circle)
                 } else {
                     fallback
                 }
@@ -133,60 +155,48 @@ struct GlassIcon: View {
 
     private var fallback: some View {
         Circle()
-            .fill(tint.opacity(0.13))
+            .fill(tint.opacity(0.12))
             .overlay {
-                Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1)
+                Circle().strokeBorder(Tideglass.line, lineWidth: 1)
             }
-    }
-}
-
-struct GlassGroup<Content: View>: View {
-    private let content: () -> Content
-
-    init(@ViewBuilder content: @escaping () -> Content) {
-        self.content = content
-    }
-
-    @ViewBuilder
-    var body: some View {
-#if swift(>=6.0)
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: 16) {
-                content()
-            }
-        } else {
-            content()
-        }
-#else
-        content()
-#endif
     }
 }
 
 struct AppBackground: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isDrifting = false
+
     var body: some View {
+        let drift = reduceMotion ? 0.0 : (isDrifting ? 1.0 : 0.0)
+
         ZStack {
-            Color(red: 0.035, green: 0.045, blue: 0.075)
+            Tideglass.canvas
             LinearGradient(
                 colors: [
-                    Color(red: 0.16, green: 0.10, blue: 0.28).opacity(0.72),
-                    Color(red: 0.03, green: 0.15, blue: 0.24).opacity(0.58),
-                    Color.clear
+                    Tideglass.surface.opacity(0.58),
+                    Tideglass.canvas.opacity(0.18),
+                    Tideglass.elevated.opacity(0.30)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             Circle()
-                .fill(Color.yellow.opacity(0.10))
-                .frame(width: 380, height: 380)
-                .blur(radius: 90)
-                .offset(x: 330, y: -250)
+                .fill(Tideglass.seafoam.opacity(0.10))
+                .frame(width: 420, height: 420)
+                .blur(radius: 115)
+                .offset(x: -300 + (drift * 18), y: 250 - (drift * 14))
             Circle()
-                .fill(Color.cyan.opacity(0.11))
-                .frame(width: 440, height: 440)
-                .blur(radius: 110)
-                .offset(x: -340, y: 260)
+                .fill(Tideglass.signal.opacity(0.10))
+                .frame(width: 340, height: 340)
+                .blur(radius: 100)
+                .offset(x: 330 - (drift * 14), y: -250 + (drift * 18))
         }
         .ignoresSafeArea()
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
+                isDrifting = true
+            }
+        }
     }
 }

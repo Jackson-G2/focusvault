@@ -288,11 +288,11 @@ private func testPreservesExistingFinalNewline() throws {
 }
 
 private func testPreservesUnicodeComments() throws {
-    let original = "# Jackson’s focus notes ✨\n127.0.0.1 localhost\n"
+    let original = "# my focus notes ✨\n127.0.0.1 localhost\n"
     try withFixture(initial: original) { hostsFile in
         let blocker = try FocusVaultBlocker(hostsFileURL: hostsFile)
         _ = try blocker.block()
-        try check((try read(hostsFile)).contains("Jackson’s focus notes ✨"), "Unicode comments were lost")
+        try check((try read(hostsFile)).contains("my focus notes ✨"), "Unicode comments were lost")
         _ = try blocker.unblock()
         try checkEqual(try read(hostsFile), original, "Unicode comments did not round-trip")
     }

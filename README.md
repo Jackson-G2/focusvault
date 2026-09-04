@@ -64,7 +64,7 @@ Run the compiled integration flow:
 
 ## Standalone Mac app
 
-The recommended entry point is the native `FocusVault.app` dashboard. It uses SwiftUI’s native Liquid Glass interface on macOS 26+ and a material fallback on older supported macOS versions.
+The recommended entry point is the native `FocusVault.app` dashboard. It uses SwiftUI’s native Liquid Glass interface on macOS 26+ and a material fallback on older supported macOS versions. The UI direction, Tideglass palette, and addition gate live in [DESIGN.md](DESIGN.md).
 
 Build and open it:
 
@@ -75,11 +75,13 @@ open dist/FocusVault.app
 
 Inside the app:
 
+- Write a short local intention so the protected stretch has a reason.
+- Choose a 25, 50, or 90 minute focus session. Starting a session engages the full vault when needed.
+- Let the restrained timer and completion moment carry the session; ending early never changes the vault automatically.
 - `Full Vault` asks macOS for administrator permission, then blocks or unblocks all YouTube domains.
-- `Channel Vault` shows the default productive channels and opens the bundled browser-companion folder for selective filtering in Chrome, Edge, or Brave.
-- `Productivity` shows a GitHub-style 13-week green-dot calendar. Each dot is one day; darker green means more active minutes in coding/work apps.
+- `Channel Vault` opens the bundled browser-companion folder for selective filtering in Chrome, Edge, or Brave.
+- `Rhythm` shows a compact GitHub-style 13-week calendar. Each dot is one day; darker seafoam means more active minutes in coding/work apps.
 - The calendar is a personal tracker, not an analysis dashboard. It stores one local daily total, counts only active minutes while FocusVault is running, and ignores idle time.
-- The app reads the current full-block status and gives clear success/error feedback.
 
 The full-block mode is genuinely standalone. Selective channel filtering still needs the browser companion because a normal macOS app cannot see the channel owner inside Chrome’s encrypted YouTube page without browser integration.
 
