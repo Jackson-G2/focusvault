@@ -127,10 +127,9 @@ private struct DashboardLayoutFile: Codable {
     let placements: [DashboardWidgetPlacement]
 }
 
-@MainActor
 final class DashboardLayoutModel: ObservableObject {
-    nonisolated static let columnCount = 4
-    nonisolated static let maximumRows = 40
+    static let columnCount = 4
+    static let maximumRows = 40
 
     @Published private(set) var placements: [DashboardWidgetPlacement]
     @Published var isEditing = false

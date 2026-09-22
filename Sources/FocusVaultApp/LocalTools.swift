@@ -385,7 +385,6 @@ enum LocalToolProcessSupervisor {
     }
 }
 
-@MainActor
 final class LocalToolsManager: ObservableObject {
     @Published private(set) var tools: [LocalToolRuntime]
     @Published var isPresentingManager = false
@@ -421,7 +420,8 @@ final class LocalToolsManager: ObservableObject {
         restoreOwnedRuns()
         if startsStatusTimer {
             statusTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.refreshStatuses() }
+                guard let self else { return }
+                Task { @MainActor in self.refreshStatuses() }
             }
         }
         refreshStatuses()
@@ -617,9 +617,9 @@ final class LocalToolsManager: ObservableObject {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         process.terminationHandler = { [weak self, weak runtime] process in
+            guard let self, let runtime else { return }
             DispatchQueue.main.async {
-                guard let self, let runtime,
-                      runtime.supervisorPID == process.processIdentifier else { return }
+                guard runtime.supervisorPID == process.processIdentifier else { return }
                 self.removeRunRecord(for: runtime.id)
                 runtime.supervisorProcess = nil
                 runtime.supervisorPID = nil
@@ -807,7 +807,8 @@ final class LocalToolsManager: ObservableObject {
             for port in ports {
                 result[port] = Self.portIsOpen(port)
             }
-            DispatchQueue.main.async { completion(result) }
+            let resolved = result
+            DispatchQueue.main.async { completion(resolved) }
         }
     }
 
