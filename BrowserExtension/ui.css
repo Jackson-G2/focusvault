@@ -3,8 +3,8 @@
 }
 
 body {
-  background: #0d1117;
-  color: #f6f7fb;
+  background: #071B20;
+  color: #F4F0E8;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   margin: 0;
   min-width: 290px;
@@ -15,7 +15,7 @@ main {
 }
 
 .eyebrow {
-  color: #f2cc60;
+  color: #FFB86A;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.18em;
@@ -29,13 +29,13 @@ h1 {
 }
 
 .status {
-  color: #8b949e;
+  color: #9DB7B1;
   font-size: 12px;
   margin: 0 0 16px;
 }
 
 .dot {
-  background: #49d17d;
+  background: #A7D9B4;
   border-radius: 50%;
   display: inline-block;
   height: 7px;
@@ -43,8 +43,16 @@ h1 {
   width: 7px;
 }
 
+.dot.locked {
+  background: #A7D9B4;
+}
+
+.dot.open {
+  background: #FFB86A;
+}
+
 .copy, .fine-print {
-  color: #a8b0bd;
+  color: #9DB7B1;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -56,26 +64,32 @@ h1 {
 }
 
 .channels li {
-  border-bottom: 1px solid #21262d;
+  border-bottom: 1px solid rgba(185, 225, 211, 0.12);
   display: flex;
   justify-content: space-between;
   padding: 9px 0;
 }
 
 .channels span {
-  color: #8b949e;
+  color: #9DB7B1;
   font-size: 12px;
 }
 
 button {
-  background: #f2cc60;
+  background: #FFB86A;
   border: 0;
   border-radius: 999px;
-  color: #161b22;
+  color: #0E2B2F;
   cursor: pointer;
   font-weight: 700;
   padding: 10px 14px;
   width: 100%;
+}
+
+button:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .fine-print {
@@ -103,10 +117,10 @@ label {
 }
 
 textarea {
-  background: #0d1117;
-  border: 1px solid #30363d;
+  background: #071B20;
+  border: 1px solid rgba(185, 225, 211, 0.16);
   border-radius: 12px;
-  color: #f6f7fb;
+  color: #F4F0E8;
   display: block;
   font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
   margin-top: 10px;
@@ -116,12 +130,12 @@ textarea {
 }
 
 .format {
-  color: #8b949e;
+  color: #9DB7B1;
   font-size: 12px;
 }
 
 code {
-  color: #f2cc60;
+  color: #FFB86A;
 }
 
 .actions {
@@ -135,8 +149,12 @@ code {
 }
 
 button.secondary {
-  background: #30363d;
-  color: #f6f7fb;
+  background: rgba(185, 225, 211, 0.16);
+  color: #F4F0E8;
+}
+
+.popup-secondary {
+  margin-top: 8px;
 }
 
 .message {
@@ -144,9 +162,9 @@ button.secondary {
 }
 
 .message.success {
-  color: #49d17d;
+  color: #A7D9B4;
 }
 
 .message.error {
-  color: #ff7b72;
+  color: #F4846A;
 }

@@ -3,18 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>FocusVault</title>
+    <title>Vaulty</title>
     <link rel="stylesheet" href="ui.css">
   </head>
   <body class="popup">
     <main>
-      <p class="eyebrow">FOCUSVAULT</p>
-      <h1>Channel vault</h1>
-      <p class="status"><span class="dot"></span> Active</p>
-      <p class="copy">Only the channels below can open on YouTube.</p>
-      <ul id="channels" class="channels"></ul>
-      <button id="options" type="button">Manage allowed channels</button>
-      <p class="fine-print">Vault in. Get work done.</p>
+      <p class="eyebrow">VAULTY</p>
+      <h1 id="title">YouTube gate</h1>
+      <p id="status" class="status"><span class="dot"></span> Checking…</p>
+      <p id="copy" class="copy">Reading the local Vaulty guard.</p>
+      <ul id="channels" class="channels" hidden></ul>
+      <button id="session-action" type="button" disabled>Checking…</button>
+      <button id="options" class="secondary popup-secondary" type="button">Channel settings</button>
+      <p class="fine-print">Shorts, TikTok, and Reels stay blocked.</p>
     </main>
     <script src="policy.js"></script>
     <script src="popup.js"></script>

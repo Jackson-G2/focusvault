@@ -260,5 +260,5 @@ if (failures.length) {
   console.log(`FAIL: ${failures.length} of ${passed + failures.length} extension policy tests failed`);
   process.exitCode = 1;
 } else {
-  console.log(`PASS: all ${passed} FocusVault extension policy tests completed`);
+  console.log(`PASS: all ${passed} Vaulty extension policy tests completed`);
 }

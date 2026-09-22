@@ -1,5 +1,5 @@
 import SwiftUI
-import FocusVaultCore
+import VaultyCore
 
 struct ProductivityCalendar: View {
     let log: ProductivityLog
@@ -13,83 +13,51 @@ struct ProductivityCalendar: View {
     }
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 16) {
+        GlassCard(cornerRadius: 24, tint: Tideglass.seafoam) {
+            VStack(alignment: .leading, spacing: 15) {
                 HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 8) {
-                            Text("Productivity")
-                                .font(.system(size: 20, weight: .bold, design: .rounded))
-#if swift(>=6.0)
-                            if #available(macOS 26.0, *) {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.green)
-                                    .glassEffect(.regular.tint(.green.opacity(0.18)), in: .circle)
-                            } else {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.green)
-                            }
-#else
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.green)
-#endif
-                        }
-                        Text("Your personal active-work calendar, kept on this Mac.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("Rhythm")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(Tideglass.ink)
                     Spacer()
                     Text(totalDescription)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.green)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Tideglass.seafoam)
                 }
 
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .top, spacing: 7) {
                     weekdayLabels
                     weeks
                 }
-
-                HStack(spacing: 8) {
-                    Text("Less")
-                    ForEach(0..<5, id: \.self) { level in
-                        ProductivityDot(level: level, size: 11)
-                    }
-                    Text("More")
-                }
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
             }
-            .padding(22)
+            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
     private var weekdayLabels: some View {
         VStack(alignment: .trailing, spacing: 5) {
-            Text("")
-                .frame(height: 11)
-            ForEach(Array(["", "M", "", "W", "", "F", ""] .enumerated()), id: \.offset) { _, label in
+            Color.clear.frame(height: 11)
+            ForEach(Array(["", "M", "", "W", "", "F", ""].enumerated()), id: \.offset) { _, label in
                 Text(label)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 14, height: 11, alignment: .trailing)
+                    .font(.system(size: 8, weight: .medium, design: .rounded))
+                    .foregroundStyle(Tideglass.muted)
+                    .frame(width: 12, height: 11, alignment: .trailing)
             }
         }
     }
 
     private var weeks: some View {
-        HStack(alignment: .top, spacing: 5) {
+        HStack(alignment: .top, spacing: 4) {
             ForEach(weekStarts, id: \.self) { weekStart in
                 VStack(spacing: 5) {
                     Text(monthLabel(for: weekStart))
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                        .foregroundStyle(Tideglass.muted)
                         .frame(height: 11)
                     ForEach(0..<7, id: \.self) { offset in
                         let date = calendar.date(byAdding: .day, value: offset, to: weekStart) ?? weekStart
-                        ProductivityDot(level: intensity(for: date), size: 13)
+                        ProductivityDot(level: intensity(for: date), size: 12)
                             .help(helpText(for: date))
                     }
                 }
@@ -113,9 +81,9 @@ struct ProductivityCalendar: View {
             calendar: calendar
         )
         if total < 60 {
-            return "\(total)m logged"
+            return "\(total)m"
         }
-        return "\(total / 60)h \(total % 60)m logged"
+        return "\(total / 60)h \(total % 60)m"
     }
 
     private func intensity(for date: Date) -> Int {
@@ -163,17 +131,17 @@ private struct ProductivityDot: View {
             .fill(color)
             .frame(width: size, height: size)
             .overlay {
-                Circle().strokeBorder(.white.opacity(level == 0 ? 0.12 : 0.04), lineWidth: 1)
+                Circle().strokeBorder(Tideglass.ink.opacity(level == 0 ? 0.10 : 0.04), lineWidth: 1)
             }
     }
 
     private var color: Color {
         switch level {
-        case 1: return .green.opacity(0.28)
-        case 2: return .green.opacity(0.48)
-        case 3: return .green.opacity(0.70)
-        case 4: return .green
-        default: return .white.opacity(0.10)
+        case 1: return Tideglass.seafoam.opacity(0.28)
+        case 2: return Tideglass.seafoam.opacity(0.48)
+        case 3: return Tideglass.seafoam.opacity(0.70)
+        case 4: return Tideglass.seafoam
+        default: return Tideglass.ink.opacity(0.10)
         }
     }
 }

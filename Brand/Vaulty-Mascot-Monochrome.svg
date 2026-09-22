@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Vaulty monochrome mark</title>
+  <desc id="desc">A monochrome flat vault character mark.</desc>
+  <rect x="38" y="58" width="180" height="154" rx="48" fill="#F4F0E8" stroke="#071B20" stroke-width="8"/>
+  <path d="M88 58V45c0-18 18-31 40-31s40 13 40 31v13" fill="none" stroke="#071B20" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="128" cy="139" r="53" fill="#071B20" stroke="#F4F0E8" stroke-width="8"/>
+  <circle cx="128" cy="139" r="15" fill="#F4F0E8"/>
+  <path d="M128 124v-17M128 154v17M113 139h-17M143 139h17" stroke="#F4F0E8" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="99" cy="91" r="6" fill="#071B20"/>
+  <circle cx="157" cy="91" r="6" fill="#071B20"/>
+  <path d="M111 103c10 8 24 8 34 0" fill="none" stroke="#071B20" stroke-width="6" stroke-linecap="round"/>
+</svg>

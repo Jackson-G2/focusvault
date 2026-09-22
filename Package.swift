@@ -2,43 +2,60 @@
 import PackageDescription
 
 let package = Package(
-    name: "FocusVault",
+    name: "Vaulty",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .library(
-            name: "FocusVaultCore",
-            targets: ["FocusVaultCore"]
+            name: "VaultyCore",
+            targets: ["VaultyCore"]
         ),
         .executable(
+            name: "vaulty",
+            targets: ["VaultyCLI"]
+        ),
+        .executable(
+            name: "vaulty-self-test",
+            targets: ["VaultySelfTest"]
+        ),
+        .executable(
+            name: "vaulty-app",
+            targets: ["VaultyApp"]
+        ),
+        // Compatibility products retained for existing FocusVault installs/scripts.
+        .executable(
             name: "focusvault",
-            targets: ["FocusVaultCLI"]
+            targets: ["VaultyCLI"]
         ),
         .executable(
             name: "focusvault-self-test",
-            targets: ["FocusVaultSelfTest"]
+            targets: ["VaultySelfTest"]
         ),
         .executable(
             name: "focusvault-app",
-            targets: ["FocusVaultApp"]
+            targets: ["VaultyApp"]
         )
     ],
     targets: [
         .target(
-            name: "FocusVaultCore"
+            name: "VaultyCore",
+            path: "Sources/FocusVaultCore"
         ),
         .executableTarget(
-            name: "FocusVaultCLI",
-            dependencies: ["FocusVaultCore"]
+            name: "VaultyCLI",
+            dependencies: ["VaultyCore"],
+            path: "Sources/FocusVaultCLI"
         ),
         .executableTarget(
-            name: "FocusVaultSelfTest",
-            dependencies: ["FocusVaultCore"]
+            name: "VaultySelfTest",
+            dependencies: ["VaultyCore"],
+            path: "Sources/FocusVaultSelfTest"
         ),
         .executableTarget(
-            name: "FocusVaultApp",
-            dependencies: ["FocusVaultCore"]
+            name: "VaultyApp",
+            dependencies: ["VaultyCore"],
+            path: "Sources/FocusVaultApp"
         )
     ]
 )

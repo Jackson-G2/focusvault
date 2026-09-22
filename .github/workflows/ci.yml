@@ -10,13 +10,23 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Run 66 core edge-case self-tests
+      - name: Run learning researcher tests
+        run: python3 -m unittest discover -s ResearchAgent/tests -v
+      - name: Run Vaulty core edge-case self-tests
+        run: swift run vaulty-self-test
+      - name: Verify the legacy FocusVault self-test alias
         run: swift run focusvault-self-test
       - name: Build release binary
         run: swift build -c release
       - name: Package standalone macOS app
         run: ./scripts/package-app.sh
+      - name: Run packaged app interaction smoke test
+        run: ./dist/Vaulty.app/Contents/MacOS/Vaulty --self-test
       - name: Run integration flow
         run: ./scripts/integration-test.sh
-      - name: Run 42 channel-vault policy tests
+      - name: Run channel-vault policy tests
         run: node BrowserExtension/tests/policy.test.js
+      - name: Run short-form platform policy tests
+        run: node BrowserExtension/tests/short-form.test.js
+      - name: Run timed YouTube session policy tests
+        run: node BrowserExtension/tests/session-policy.test.js
