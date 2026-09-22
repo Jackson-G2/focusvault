@@ -1,6 +1,6 @@
 import Darwin
 import Foundation
-import FocusVaultCore
+import VaultyCore
 
 private struct SelfTestFailure: Error, CustomStringConvertible {
     let message: String
@@ -22,12 +22,19 @@ private func testCalendar() -> Calendar {
     return calendar
 }
 
-private func testDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 12) -> Date {
+private func testDate(
+    _ year: Int,
+    _ month: Int,
+    _ day: Int,
+    _ hour: Int = 12,
+    _ minute: Int = 0
+) -> Date {
     var components = DateComponents()
     components.year = year
     components.month = month
     components.day = day
     components.hour = hour
+    components.minute = minute
     return testCalendar().date(from: components)!
 }
 
@@ -94,10 +101,10 @@ private func expectFocusVaultError(
 ) throws {
     do {
         try work()
-        throw SelfTestFailure(message: "expected FocusVaultError: \(message)")
+        throw SelfTestFailure(message: "expected VaultyError: \(message)")
     } catch let error as FocusVaultError {
         if let predicate, !predicate(error) {
-            throw SelfTestFailure(message: "wrong FocusVaultError for \(message): \(error)")
+            throw SelfTestFailure(message: "wrong VaultyError for \(message): \(error)")
         }
     }
 }
@@ -129,17 +136,112 @@ private func expectInvalidDomain(_ value: String) throws {
 }
 
 private func testDefaultBlockContainsAllDomains() throws {
+    try checkEqual(
+        FocusVaultBlocker.defaultDomains,
+        FocusVaultBlocker.youtubeDomains,
+        "the default YouTube blocker domains changed"
+    )
     try withFixture { hostsFile in
         let blocker = try FocusVaultBlocker(hostsFileURL: hostsFile)
         let changed = try blocker.block()
         try check(changed, "first block should change the hosts file")
         let contents = try read(hostsFile)
-        try check(contents.contains(FocusVaultBlocker.beginMarker), "FocusVault begin marker is missing")
-        try check(contents.contains(FocusVaultBlocker.endMarker), "FocusVault end marker is missing")
+        try check(contents.contains(FocusVaultBlocker.beginMarker), "Vaulty begin marker is missing")
+        try check(contents.contains(FocusVaultBlocker.endMarker), "Vaulty end marker is missing")
         try check(contents.contains("Vault in and get work done"), "focus tagline is missing from the managed section")
         for domain in FocusVaultBlocker.defaultDomains {
             try check(contents.contains("0.0.0.0 \(domain)"), "missing default domain: \(domain)")
         }
+        for domain in ["tiktok.com", "instagram.com", "facebook.com"] {
+            try check(!contents.contains("0.0.0.0 \(domain)"), "short-form domain leaked into YouTube blocker: \(domain)")
+        }
+    }
+}
+
+private func testShortFormPolicyCoversRequestedPlatforms() throws {
+    let samples: [(String, ShortFormPlatform)] = [
+        ("https://www.tiktok.com/@creator/video/123", .tiktok),
+        ("https://www.instagram.com/reel/123/", .instagram),
+        ("https://www.youtube.com/shorts/abc123", .youtube),
+        ("https://www.facebook.com/reels/videos/123", .facebook),
+        ("https://fb.watch/abc123/", .facebook)
+    ]
+
+    for (url, platform) in samples {
+        let decision = ShortFormPolicy.decision(for: url)
+        try checkEqual(decision.state, .blocked, "short-form URL was not blocked: \(url)")
+        try checkEqual(decision.platform, platform, "wrong short-form platform for \(url)")
+        try check(ShortFormPolicy.isShortFormURL(url), "short-form URL was not recognized: \(url)")
+    }
+
+    try checkEqual(
+        ShortFormPolicy.decision(for: "https://www.youtube.com/watch?v=abc").state,
+        .notShortForm,
+        "regular YouTube watch URL was classified as Shorts"
+    )
+    try checkEqual(
+        ShortFormPolicy.decision(for: "https://www.instagram.com/p/123/").state,
+        .notShortForm,
+        "regular Instagram post URL was classified as a Reel"
+    )
+    try checkEqual(
+        ShortFormPolicy.decision(for: "https://www.facebook.com/groups/work").state,
+        .notShortForm,
+        "regular Facebook URL was classified as a Reel"
+    )
+    try checkEqual(
+        ShortFormPolicy.decision(for: "https://example.com/reel/123").state,
+        .outside,
+        "unrelated host was treated as short-form"
+    )
+}
+
+private func testShortFormBlockerCoversRequestedHosts() throws {
+    try withFixture { hostsFile in
+        let blocker = try ShortFormBlocker(hostsFileURL: hostsFile)
+        try check(!(try blocker.isBlocked()), "fresh short-form vault is incorrectly blocked")
+        try check(try blocker.block(), "short-form block did not change the hosts file")
+        try check(try blocker.isBlocked(), "short-form vault did not report complete coverage")
+
+        let contents = try read(hostsFile)
+        try check(contents.contains(ShortFormBlocker.beginMarker), "short-form begin marker is missing")
+        try check(contents.contains(ShortFormBlocker.endMarker), "short-form end marker is missing")
+        for platform in ShortFormPlatform.allCases {
+            for domain in ShortFormPolicy.hosts(for: platform) {
+                try check(
+                    contents.contains("0.0.0.0 \(domain)"),
+                    "missing \(platform.displayName) host mapping: \(domain)"
+                )
+            }
+        }
+
+        try check(try blocker.unblock(), "short-form vault did not unblock")
+        try checkEqual(try read(hostsFile), defaultFixtureContents, "short-form unblock damaged existing hosts content")
+    }
+}
+
+private func testShortFormBlockerIsIndependentFromYouTubeBlocker() throws {
+    try withFixture { hostsFile in
+        let youtubeOnly = try FocusVaultBlocker(
+            hostsFileURL: hostsFile,
+            domains: FocusVaultBlocker.youtubeDomains
+        )
+        let shortForm = try ShortFormBlocker(hostsFileURL: hostsFile)
+
+        try check(try youtubeOnly.block(), "YouTube-only fixture block failed")
+        try check(try youtubeOnly.isBlocked(), "YouTube blocker did not report its own section")
+        try check(!(try shortForm.isBlocked()), "YouTube block was mistaken for short-form coverage")
+
+        try check(try shortForm.block(), "separate short-form block did not change the hosts file")
+        try check(try shortForm.isBlocked(), "short-form block is incomplete")
+        try check(try youtubeOnly.isBlocked(), "short-form block damaged the YouTube blocker")
+
+        try check(try shortForm.unblock(), "short-form block did not unblock independently")
+        try check(!(try shortForm.isBlocked()), "short-form block remained after independent unblock")
+        try check(try youtubeOnly.isBlocked(), "short-form unblock damaged the YouTube blocker")
+
+        try check(try youtubeOnly.unblock(), "YouTube block did not unblock independently")
+        try checkEqual(try read(hostsFile), defaultFixtureContents, "independent block cycles damaged existing hosts content")
     }
 }
 
@@ -222,6 +324,25 @@ private func testProductivityStoreMissingFileStartsEmpty() throws {
     let store = try ProductivityLogStore(fileURL: fileURL)
     try check(store.log.minutesByDay.isEmpty, "missing productivity file did not start empty")
     try check(!FileManager.default.fileExists(atPath: fileURL.path), "initializing created an unnecessary file")
+}
+
+private func testProductivityStoreMigratesLegacyFile() throws {
+    let calendar = testCalendar()
+    let date = testDate(2026, 8, 23)
+    let directory = try makeDirectory()
+    let legacyURL = directory.appendingPathComponent("FocusVault/productivity.json")
+    let newURL = directory.appendingPathComponent("Vaulty/productivity.json")
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    var legacyLog = ProductivityLog()
+    legacyLog.record(minutes: 25, at: date, calendar: calendar)
+    try FileManager.default.createDirectory(at: legacyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try JSONEncoder().encode(legacyLog).write(to: legacyURL)
+
+    let migrated = try ProductivityLogStore(fileURL: newURL, legacyFileURL: legacyURL)
+    try checkEqual(migrated.log.minutes(on: date, calendar: calendar), 25, "legacy productivity data was not migrated")
+    try check(FileManager.default.fileExists(atPath: newURL.path), "migrated Vaulty productivity file was not created")
+    try check(FileManager.default.fileExists(atPath: legacyURL.path), "legacy productivity file was removed")
 }
 
 private func testProductivityStoreRejectsCorruptFile() throws {
@@ -395,7 +516,7 @@ private func testCRLFBlockUsesCRLF() throws {
         let blocker = try FocusVaultBlocker(hostsFileURL: hostsFile)
         _ = try blocker.block()
         let contents = try read(hostsFile)
-        try check(contents.contains("# BEGIN FOCUSVAULT MANAGED BLOCK\r\n"), "CRLF marker line was not preserved")
+        try check(contents.contains("# BEGIN VAULTY MANAGED BLOCK\r\n"), "CRLF marker line was not preserved")
         try check(!contents.replacingOccurrences(of: "\r\n", with: "").contains("\n"), "mixed line endings were introduced")
     }
 }
@@ -407,6 +528,33 @@ private func testCRLFUnblockPreservesExactContent() throws {
         _ = try blocker.block()
         _ = try blocker.unblock()
         try checkEqual(try read(hostsFile), original, "CRLF content did not round-trip")
+    }
+}
+
+private func testFocusVaultBlockMigrates() throws {
+    let legacy = [
+        FocusVaultBlocker.focusVaultBeginMarker,
+        "# old FocusVault block",
+        "0.0.0.0 youtube.com",
+        FocusVaultBlocker.focusVaultEndMarker,
+        ""
+    ].joined(separator: "\n")
+    try withFixture(initial: legacy) { hostsFile in
+        let blocker = try FocusVaultBlocker(hostsFileURL: hostsFile)
+        try check(try blocker.isBlocked(), "FocusVault block was not detected")
+        try check(try blocker.block(), "FocusVault block was not replaced")
+        let contents = try read(hostsFile)
+        try check(contents.contains(FocusVaultBlocker.beginMarker), "FocusVault block was not migrated")
+        try check(!contents.contains(FocusVaultBlocker.focusVaultBeginMarker), "FocusVault marker remains after migration")
+    }
+}
+
+private func testFocusVaultUnblock() throws {
+    let legacy = "# before\n\(FocusVaultBlocker.focusVaultBeginMarker)\n0.0.0.0 youtube.com\n\(FocusVaultBlocker.focusVaultEndMarker)\n# after\n"
+    try withFixture(initial: legacy) { hostsFile in
+        let blocker = try FocusVaultBlocker(hostsFileURL: hostsFile)
+        try check(try blocker.unblock(), "FocusVault block was not removed")
+        try checkEqual(try read(hostsFile), "# before\n# after\n", "FocusVault unblock damaged surrounding content")
     }
 }
 
@@ -717,6 +865,45 @@ private func testEmptyCustomDomainListThrows() throws {
     }
 }
 
+private func testSleepCalculatorBedtimes() throws {
+    let calendar = testCalendar()
+    let wakeTime = testDate(2026, 8, 24, 7, 0)
+    let results = SleepCalculator.bedtimes(for: wakeTime, calendar: calendar)
+
+    try checkEqual(results.map(\.cycles), [6, 5, 4], "sleep cycle recommendations changed order")
+    try checkEqual(results.map(\.sleepMinutes), [540, 450, 360], "sleep durations are wrong")
+    try checkEqual(
+        results[0].time,
+        testDate(2026, 8, 23, 21, 46),
+        "six-cycle bedtime did not include sleep latency"
+    )
+    try checkEqual(
+        results[2].time,
+        testDate(2026, 8, 24, 0, 46),
+        "four-cycle bedtime did not cross midnight correctly"
+    )
+}
+
+private func testSleepCalculatorWakeTimesAndFiltering() throws {
+    let calendar = testCalendar()
+    let bedtime = testDate(2026, 8, 23, 22, 0)
+    let results = SleepCalculator.recommendations(
+        direction: .bedtime,
+        time: bedtime,
+        calendar: calendar,
+        cycleCounts: [6, 6, 0, 13, 3]
+    )
+
+    try checkEqual(results.map(\.cycles), [6, 3], "invalid or duplicate sleep cycles were not filtered")
+    try checkEqual(results[0].time, testDate(2026, 8, 24, 7, 14), "six-cycle wake time is wrong")
+    try checkEqual(results[1].time, testDate(2026, 8, 24, 2, 44), "three-cycle wake time is wrong")
+    try checkEqual(
+        SleepCalculator.recommendations(direction: .wakeTime, time: bedtime, calendar: calendar),
+        SleepCalculator.bedtimes(for: bedtime, calendar: calendar),
+        "direction recommendation did not use bedtime calculation"
+    )
+}
+
 private func testTaskClockAcceptsExactEstimate() throws {
     let clock = try FocusTaskClock(minutes: 40)
     try checkEqual(clock.durationSeconds, 2_400, "task clock duration is not exact")
@@ -773,11 +960,378 @@ private func testTaskClockResumesCompletesAndStops() throws {
     try checkEqual(stoppedClock.remainingWholeSeconds, 600, "stopped task clock did not reset its estimate")
 }
 
+private func testSignalShiftTransformsCoordinates() throws {
+    let point = SignalGridPoint(row: 0, column: 1)
+    try checkEqual(
+        SignalTransform.unchanged.apply(to: point, gridSize: 4),
+        point,
+        "practice-room identity transform changed the path"
+    )
+    try checkEqual(
+        SignalTransform.rotateClockwise.apply(to: point, gridSize: 4),
+        SignalGridPoint(row: 1, column: 3),
+        "clockwise mental rotation is wrong"
+    )
+    try checkEqual(
+        SignalTransform.rotateCounterClockwise.apply(to: point, gridSize: 4),
+        SignalGridPoint(row: 2, column: 0),
+        "counter-clockwise mental rotation is wrong"
+    )
+    try checkEqual(
+        SignalTransform.mirrorHorizontally.apply(to: point, gridSize: 4),
+        SignalGridPoint(row: 0, column: 2),
+        "horizontal mirror is wrong"
+    )
+}
+
+private func testSignalShiftDifficultyProgression() throws {
+    var generator = SignalShiftGenerator(seed: 42)
+    let first = generator.makePuzzle(level: 1)
+    let second = generator.makePuzzle(level: 2)
+    let third = generator.makePuzzle(level: 3)
+
+    try checkEqual(first.sequence.count, 3, "practice room should contain three signals")
+    try checkEqual(first.transform, .unchanged, "practice room should not transform the path")
+    try check(!first.reverseOrder, "practice room should preserve order")
+    try checkEqual(second.sequence.count, 4, "level two should contain four signals")
+    try checkEqual(second.transform, .mirrorHorizontally, "level two transform changed")
+    try check(!second.reverseOrder, "level two should preserve order")
+    try checkEqual(third.sequence.count, 4, "level three should contain four signals")
+    try checkEqual(third.transform, .rotateClockwise, "level three transform changed")
+    try check(!third.reverseOrder, "level three should preserve order")
+    try checkEqual(Set(first.sequence).count, first.sequence.count, "a puzzle repeated a signal cell")
+    try check(zip(first.sequence, first.sequence.dropFirst()).allSatisfy { pair in
+        let (left, right) = pair
+        return abs(left.row - right.row) + abs(left.column - right.column) == 1
+    }, "practice-room signals should form a connected path")
+}
+
+private func testSignalShiftRequiresThreeCompletedRounds() throws {
+    var run = SignalShiftRun(seed: 7)
+    try checkEqual(run.submit(run.puzzle.expectedSequence), .advanced(nextLevel: 2), "first solved round did not advance")
+    try checkEqual(run.submit(run.puzzle.expectedSequence), .advanced(nextLevel: 3), "second solved round did not advance")
+    try checkEqual(run.submit(run.puzzle.expectedSequence), .completed, "third solved round did not complete")
+    try checkEqual(run.livesRemaining, 3, "correct rounds consumed lives")
+}
+
+private func testSignalShiftPracticeRoomCostsNoLives() throws {
+    var run = SignalShiftRun(seed: 99)
+    let wrong = [SignalGridPoint(row: -1, column: -1)]
+
+    try checkEqual(run.submit(wrong), .retry(livesRemaining: 3), "practice mistake consumed a life")
+    try checkEqual(run.livesRemaining, 3, "practice room reduced lives")
+    try checkEqual(run.level, 1, "practice retry advanced the room")
+}
+
+private func testSignalShiftThreeLivesLockOut() throws {
+    var run = SignalShiftRun(seed: 99)
+    let wrong = [SignalGridPoint(row: -1, column: -1)]
+    try checkEqual(run.submit(run.puzzle.expectedSequence), .advanced(nextLevel: 2), "could not leave practice room")
+
+    try checkEqual(run.submit(wrong), .retry(livesRemaining: 2), "first scored mistake did not consume one life")
+    try checkEqual(run.submit(wrong), .retry(livesRemaining: 1), "second mistake did not consume one life")
+    try checkEqual(run.submit(wrong), .lockedOut, "third mistake did not require a fresh password attempt")
+    try checkEqual(run.livesRemaining, 0, "lockout retained a life")
+}
+
+private func testGridShotScoringAndTargetRelocation() throws {
+    var run = GridShotRun(seed: 123)
+    try checkEqual(run.targets.count, 3, "Grid Shot did not start with three targets")
+    guard let firstTarget = run.targets.first else {
+        throw SelfTestFailure(message: "Grid Shot started without a target")
+    }
+    try checkEqual(
+        run.tap(at: firstTarget.point),
+        .hit(targetID: firstTarget.id),
+        "Grid Shot target click was not a hit"
+    )
+    try checkEqual(run.score, 1, "Grid Shot hit did not add one point")
+    try checkEqual(run.targets.count, 3, "Grid Shot did not keep three targets")
+    try check(
+        run.targets.first(where: { $0.id == firstTarget.id })?.point != firstTarget.point,
+        "Grid Shot hit target did not relocate"
+    )
+
+    try checkEqual(
+        run.tap(at: GridShotPoint(x: 0, y: 0)),
+        .miss,
+        "Grid Shot empty arena click was treated as a hit"
+    )
+    try checkEqual(run.score, 0, "Grid Shot miss did not remove one point")
+}
+
+private func testGridShotHardTargetIsThirty() throws {
+    var run = GridShotRun(seed: 456)
+    for _ in 0..<GridShotRun.targetScore {
+        guard let target = run.targets.first else {
+            throw SelfTestFailure(message: "Grid Shot lost every target")
+        }
+        try checkEqual(
+            run.tap(at: target.point),
+            .hit(targetID: target.id),
+            "Grid Shot target click was not a hit"
+        )
+    }
+    try checkEqual(GridShotRun.durationSeconds, 10, "Grid Shot duration changed")
+    try checkEqual(GridShotRun.targetCount, 3, "Grid Shot target count changed")
+    try checkEqual(GridShotRun.targetRadius, 50, "Grid Shot aim radius changed")
+    try checkEqual(run.score, 30, "Grid Shot hard target was not 30")
+    try check(run.hasReachedTarget, "Grid Shot did not pass at score 30")
+}
+
+private func testTypingSprintMonkeytypeCompletion() throws {
+    let prompt = TypingSprint.prompt(seed: 42)
+    try checkEqual(prompt, TypingSprint.prompt(seed: 42), "typing prompt generation is not deterministic")
+    try checkEqual(prompt.split(separator: " ").count, TypingSprint.wordCount, "typing prompt word count changed")
+
+    let success = TypingSprint.evaluate(typed: prompt, target: prompt, elapsedSeconds: 120)
+    try check(success.succeeded, "exact Monkeytype-style completion did not pass immediately")
+    try checkEqual(success.accuracy, 1, "exact typing sprint accuracy is not 100 percent")
+
+    var incorrect = prompt
+    incorrect.removeLast()
+    incorrect.append("x")
+    let mistake = TypingSprint.evaluate(typed: incorrect, target: prompt, elapsedSeconds: 12)
+    try check(!mistake.succeeded, "typing sprint passed incorrect text")
+}
+
+private func testRootOwnedAdminUnlockPolicy() throws {
+    let request = YouTubeGuardRequest(
+        command: .unlock,
+        authorization: YouTubeGuardPaths.rootAuthorizedRequestMarker
+    )
+    try check(
+        request.allowsRootOwnedAuthorization(ownerID: 0, posixPermissions: 0o600),
+        "root-owned 0600 administrator unlock request was rejected"
+    )
+    try check(
+        !request.allowsRootOwnedAuthorization(ownerID: 501, posixPermissions: 0o600),
+        "user-owned request was allowed to use root authorization"
+    )
+    try check(
+        !request.allowsRootOwnedAuthorization(ownerID: 0, posixPermissions: 0o644),
+        "group/world-readable request was allowed to use root authorization"
+    )
+    let ordinary = YouTubeGuardRequest(command: .unlock, authorization: "not-the-root-marker")
+    try check(
+        !ordinary.allowsRootOwnedAuthorization(ownerID: 0, posixPermissions: 0o600),
+        "ordinary token was mistaken for a root-authorized request"
+    )
+}
+
+private func testUnlockChallengeKindsRemainComplete() throws {
+    try checkEqual(
+        UnlockChallengeKind.allCases,
+        [.signalShift, .gridShot, .typingSprint],
+        "known challenge kinds changed unexpectedly"
+    )
+    try checkEqual(
+        UnlockChallengeKind.requiredRotation,
+        [.gridShot, .typingSprint],
+        "required unlock rotation should contain only Grid Shot and Typing Sprint"
+    )
+    try checkEqual(
+        UnlockChallengeKind.taskHubChoices,
+        [.gridShot, .typingSprint, .signalShift],
+        "task hub choices should include the restored optional Signal Shift"
+    )
+}
+
+private func testYouTubeGuardUnlockLeaseExpiresAtFortyFiveMinutes() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    let support = fixture.directory.appendingPathComponent("guard", isDirectory: true)
+    let storage = YouTubeGuardStorage(
+        stateURL: support.appendingPathComponent("state.json"),
+        requestDirectoryURL: support.appendingPathComponent("requests", isDirectory: true),
+        responseDirectoryURL: support.appendingPathComponent("responses", isDirectory: true)
+    )
+    var currentDate = Date(timeIntervalSinceReferenceDate: 50_000)
+    let engine = try YouTubeGuardEngine(
+        hostsFileURL: fixture.hostsFile,
+        storage: storage,
+        authorizationValidator: { $0 == "valid-authorization" },
+        now: { currentDate }
+    )
+
+    _ = try engine.enforce()
+    try check(try FocusVaultBlocker(hostsFileURL: fixture.hostsFile).isBlocked(), "guard did not fail closed before a lease")
+
+    let request = YouTubeGuardRequest(
+        command: .unlock,
+        authorization: "valid-authorization",
+        createdAt: currentDate
+    )
+    let response = try engine.process(request)
+    try check(response.succeeded, "valid unlock request failed")
+    try check(!(try FocusVaultBlocker(hostsFileURL: fixture.hostsFile).isBlocked()), "valid lease did not open YouTube")
+    let state = storage.readState(now: currentDate)
+    try checkEqual(state.remainingSeconds(at: currentDate), 2_700, "unlock lease was not exactly 45 minutes")
+
+    let extensionAttempt = try engine.process(
+        YouTubeGuardRequest(command: .unlock, authorization: "valid-authorization", createdAt: currentDate)
+    )
+    try check(!extensionAttempt.succeeded, "an active lease was extended in place")
+    try checkEqual(
+        storage.readState(now: currentDate).unlockedUntil,
+        state.unlockedUntil,
+        "rejected unlock changed the fixed lease deadline"
+    )
+
+    currentDate = currentDate.addingTimeInterval(2_699)
+    _ = try engine.enforce()
+    try check(!(try FocusVaultBlocker(hostsFileURL: fixture.hostsFile).isBlocked()), "guard relocked before 45 minutes")
+
+    currentDate = currentDate.addingTimeInterval(2)
+    _ = try engine.enforce()
+    try check(try FocusVaultBlocker(hostsFileURL: fixture.hostsFile).isBlocked(), "guard did not relock after 45 minutes")
+    try checkEqual(storage.readState(now: currentDate).remainingSeconds(at: currentDate), 0, "expired lease retained time")
+}
+
+private func testYouTubeGuardRejectsInvalidAuthorization() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    let support = fixture.directory.appendingPathComponent("guard", isDirectory: true)
+    let storage = YouTubeGuardStorage(
+        stateURL: support.appendingPathComponent("state.json"),
+        requestDirectoryURL: support.appendingPathComponent("requests", isDirectory: true),
+        responseDirectoryURL: support.appendingPathComponent("responses", isDirectory: true)
+    )
+    let currentDate = Date(timeIntervalSinceReferenceDate: 60_000)
+    let engine = try YouTubeGuardEngine(
+        hostsFileURL: fixture.hostsFile,
+        storage: storage,
+        authorizationValidator: { _ in false },
+        now: { currentDate }
+    )
+
+    _ = try engine.enforce()
+    let request = YouTubeGuardRequest(
+        command: .unlock,
+        authorization: "forged",
+        createdAt: currentDate
+    )
+    let response = try engine.process(request)
+    try check(!response.succeeded, "invalid authorization opened YouTube")
+    try check(response.message.contains("not valid"), "invalid authorization returned the wrong failure")
+    try check(try FocusVaultBlocker(hostsFileURL: fixture.hostsFile).isBlocked(), "invalid authorization changed the block")
+}
+
+private func testYouTubeGuardLockNeedsNoAuthorization() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    let support = fixture.directory.appendingPathComponent("guard", isDirectory: true)
+    let storage = YouTubeGuardStorage(
+        stateURL: support.appendingPathComponent("state.json"),
+        requestDirectoryURL: support.appendingPathComponent("requests", isDirectory: true),
+        responseDirectoryURL: support.appendingPathComponent("responses", isDirectory: true)
+    )
+    let currentDate = Date(timeIntervalSinceReferenceDate: 70_000)
+    let engine = try YouTubeGuardEngine(
+        hostsFileURL: fixture.hostsFile,
+        storage: storage,
+        authorizationValidator: { _ in true },
+        now: { currentDate }
+    )
+
+    _ = try engine.process(
+        YouTubeGuardRequest(command: .unlock, authorization: "valid", createdAt: currentDate)
+    )
+    let lockResponse = try engine.process(
+        YouTubeGuardRequest(command: .lock, authorization: nil, createdAt: currentDate)
+    )
+    try check(lockResponse.succeeded, "password-free lock request failed")
+    try check(try FocusVaultBlocker(hostsFileURL: fixture.hostsFile).isBlocked(), "password-free request did not lock YouTube")
+    try checkEqual(storage.readState(now: currentDate).unlockedUntil, nil, "manual lock retained an unlock deadline")
+}
+
+private func testYouTubeGuardPreservesShortFormScopesAcrossLease() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    let youtube = try FocusVaultBlocker(hostsFileURL: fixture.hostsFile)
+    let fullShortForm = try ShortFormBlocker(hostsFileURL: fixture.hostsFile)
+    let leaseShortForm = try ShortFormBlocker(
+        hostsFileURL: fixture.hostsFile,
+        domains: ShortFormPolicy.nonYouTubeHosts
+    )
+    _ = try youtube.block()
+    _ = try fullShortForm.block()
+
+    let support = fixture.directory.appendingPathComponent("guard", isDirectory: true)
+    let storage = YouTubeGuardStorage(
+        stateURL: support.appendingPathComponent("state.json"),
+        requestDirectoryURL: support.appendingPathComponent("requests", isDirectory: true),
+        responseDirectoryURL: support.appendingPathComponent("responses", isDirectory: true)
+    )
+    var currentDate = Date(timeIntervalSinceReferenceDate: 80_000)
+    let engine = try YouTubeGuardEngine(
+        hostsFileURL: fixture.hostsFile,
+        storage: storage,
+        authorizationValidator: { _ in true },
+        now: { currentDate }
+    )
+
+    let response = try engine.process(
+        YouTubeGuardRequest(command: .unlock, authorization: "valid", createdAt: currentDate)
+    )
+    try check(response.succeeded, "short-form-aware unlock failed")
+    try check(!(try youtube.isBlocked()), "YouTube marker remained during its lease")
+    try check(try leaseShortForm.isBlocked(), "non-YouTube short-form hosts were opened during a YouTube lease")
+    try check(!(try fullShortForm.isBlocked()), "YouTube hosts remained in the short-form section during a YouTube lease")
+    try checkEqual(storage.readState(now: currentDate).restoreShortForm, true, "short-form restore scope was not persisted")
+
+    currentDate = currentDate.addingTimeInterval(2_701)
+    _ = try engine.enforce()
+    try check(try youtube.isBlocked(), "YouTube did not relock after the lease")
+    try check(try fullShortForm.isBlocked(), "full short-form protection was not restored after the lease")
+    try checkEqual(storage.readState(now: currentDate).restoreShortForm, nil, "restored short-form scope was not cleared")
+}
+
+private func testYouTubeGuardRollsBackWhenSuccessCannotBeReported() throws {
+    let fixture = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.directory) }
+    let support = fixture.directory.appendingPathComponent("guard", isDirectory: true)
+    try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+    let invalidResponses = support.appendingPathComponent("responses")
+    try "not a directory".write(to: invalidResponses, atomically: true, encoding: .utf8)
+    let storage = YouTubeGuardStorage(
+        stateURL: support.appendingPathComponent("state.json"),
+        requestDirectoryURL: support.appendingPathComponent("requests", isDirectory: true),
+        responseDirectoryURL: invalidResponses
+    )
+    let currentDate = Date(timeIntervalSinceReferenceDate: 90_000)
+    let engine = try YouTubeGuardEngine(
+        hostsFileURL: fixture.hostsFile,
+        storage: storage,
+        authorizationValidator: { _ in true },
+        now: { currentDate }
+    )
+
+    do {
+        _ = try engine.process(
+            YouTubeGuardRequest(command: .unlock, authorization: "valid", createdAt: currentDate)
+        )
+        throw SelfTestFailure(message: "unlock succeeded without a writable response channel")
+    } catch is SelfTestFailure {
+        throw SelfTestFailure(message: "unlock succeeded without a writable response channel")
+    } catch {
+        // The response channel is deliberately broken; the lock must still be restored.
+    }
+
+    try check(try FocusVaultBlocker(hostsFileURL: fixture.hostsFile).isBlocked(), "failed success response left YouTube open")
+    let state = storage.readState(now: currentDate)
+    try check(state.locked, "failed success response retained an open state")
+    try checkEqual(state.unlockedUntil, nil, "failed success response retained a lease deadline")
+}
+
 @main
 private struct FocusVaultSelfTest {
     static func main() {
         let tests: [(String, () throws -> Void)] = [
             ("default block contains all domains", testDefaultBlockContainsAllDomains),
+            ("short-form policy covers requested platforms", testShortFormPolicyCoversRequestedPlatforms),
+            ("short-form blocker covers requested hosts", testShortFormBlockerCoversRequestedHosts),
+            ("short-form blocker is independent from YouTube blocker", testShortFormBlockerIsIndependentFromYouTubeBlocker),
             ("default YouTube channel allowlist", testDefaultYouTubeChannelAllowlist),
             ("productivity log same-day aggregation", testProductivityLogAggregatesSameDay),
             ("productivity log day separation", testProductivityLogSeparatesDays),
@@ -785,6 +1339,7 @@ private struct FocusVaultSelfTest {
             ("productivity log overflow clamp", testProductivityLogClampsOverflow),
             ("productivity store persistence", testProductivityStorePersistsAndReloads),
             ("productivity store missing file", testProductivityStoreMissingFileStartsEmpty),
+            ("productivity store legacy migration", testProductivityStoreMigratesLegacyFile),
             ("productivity store corrupt file", testProductivityStoreRejectsCorruptFile),
             ("productivity date key", testProductivityDateKeyUsesCalendarDay),
             ("empty existing file", testEmptyExistingFile),
@@ -804,8 +1359,10 @@ private struct FocusVaultSelfTest {
             ("case and dot normalization", testCaseAndDotNormalization),
             ("CRLF block", testCRLFBlockUsesCRLF),
             ("CRLF restoration", testCRLFUnblockPreservesExactContent),
-            ("legacy migration", testLegacyBlockMigrates),
-            ("legacy unblock", testLegacyUnblock),
+            ("FocusVault marker migration", testFocusVaultBlockMigrates),
+            ("FocusVault marker unblock", testFocusVaultUnblock),
+            ("Frostwall marker migration", testLegacyBlockMigrates),
+            ("Frostwall marker unblock", testLegacyUnblock),
             ("CRLF legacy migration", testCRLFLegacyMigration),
             ("comment marker safety", testMarkerTextInsideCommentIsIgnored),
             ("indented marker safety", testLeadingWhitespaceMarkerIsIgnored),
@@ -843,10 +1400,27 @@ private struct FocusVaultSelfTest {
             ("prefix and suffix preservation", testPrefixAndSuffixRemain),
             ("malformed status rejection", testStatusMalformedThrows),
             ("empty custom list rejection", testEmptyCustomDomainListThrows),
+            ("sleep calculator bedtimes", testSleepCalculatorBedtimes),
+            ("sleep calculator wake times and filtering", testSleepCalculatorWakeTimesAndFiltering),
             ("task clock exact estimate", testTaskClockAcceptsExactEstimate),
             ("task clock invalid estimate", testTaskClockRejectsInvalidEstimate),
             ("task clock pause remainder", testTaskClockPausePreservesRemainder),
-            ("task clock resume, completion, and stop", testTaskClockResumesCompletesAndStops)
+            ("task clock resume, completion, and stop", testTaskClockResumesCompletesAndStops),
+            ("Signal Shift coordinate transforms", testSignalShiftTransformsCoordinates),
+            ("Signal Shift difficulty progression", testSignalShiftDifficultyProgression),
+            ("Signal Shift three-round completion", testSignalShiftRequiresThreeCompletedRounds),
+            ("Signal Shift practice room", testSignalShiftPracticeRoomCostsNoLives),
+            ("Signal Shift three-life lockout", testSignalShiftThreeLivesLockOut),
+            ("Grid Shot scoring and relocation", testGridShotScoringAndTargetRelocation),
+            ("Grid Shot hard target", testGridShotHardTargetIsThirty),
+            ("Typing Sprint Monkeytype completion", testTypingSprintMonkeytypeCompletion),
+            ("root-owned administrator unlock policy", testRootOwnedAdminUnlockPolicy),
+            ("required unlock challenge rotation", testUnlockChallengeKindsRemainComplete),
+            ("YouTube guard 45-minute expiry", testYouTubeGuardUnlockLeaseExpiresAtFortyFiveMinutes),
+            ("YouTube guard authorization rejection", testYouTubeGuardRejectsInvalidAuthorization),
+            ("YouTube guard password-free lock", testYouTubeGuardLockNeedsNoAuthorization),
+            ("YouTube guard short-form scope restoration", testYouTubeGuardPreservesShortFormScopesAcrossLease),
+            ("YouTube guard response failure rollback", testYouTubeGuardRollsBackWhenSuccessCannotBeReported)
         ]
 
         var failures: [(String, String)] = []
@@ -862,9 +1436,9 @@ private struct FocusVaultSelfTest {
         }
 
         if failures.isEmpty {
-            print("PASS: all \(tests.count) FocusVault edge-case tests completed")
+            print("PASS: all \(tests.count) Vaulty edge-case tests completed")
         } else {
-            print("FAIL: \(failures.count) of \(tests.count) FocusVault edge-case tests failed")
+            print("FAIL: \(failures.count) of \(tests.count) Vaulty edge-case tests failed")
             for (name, message) in failures {
                 print("  - \(name): \(message)")
             }

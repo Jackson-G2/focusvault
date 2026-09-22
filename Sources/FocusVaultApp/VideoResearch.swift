@@ -86,7 +86,7 @@ private enum VideoResearchError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .helperMissing:
-            return "The bundled learning researcher was not found. Rebuild FocusVault with scripts/package-app.sh."
+            return "The bundled learning researcher was not found. Rebuild Vaulty with scripts/package-app.sh."
         case .pythonMissing:
             return "Python 3 was not found. Install Python 3 to run the learning researcher."
         case .emptyOutput:

@@ -3,14 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>FocusVault channel settings</title>
+    <title>Vaulty channel settings</title>
     <link rel="stylesheet" href="ui.css">
   </head>
   <body>
     <main class="options-page">
-      <p class="eyebrow">FOCUSVAULT · SETTINGS</p>
-      <h1>Allowed YouTube channels</h1>
-      <p class="copy">FocusVault blocks YouTube unless the current page belongs to one of these channels. Keep the list intentional so your vault stays useful.</p>
+      <p class="eyebrow">VAULTY · SETTINGS</p>
+      <h1>Fallback allowed channels</h1>
+      <p class="copy">With the native Vaulty guard installed, YouTube is fully locked except during a 45-minute password-plus-Signal-Shift session. This exact allowlist is the safer fallback when the native guard is unavailable.</p>
+      <p id="guard-status" class="message" role="status"></p>
       <label for="channel-list">One channel per line</label>
       <textarea id="channel-list" rows="8" spellcheck="false"></textarea>
       <p class="format">Format: <code>Name | @handle | channel ID</code>. A handle or channel ID alone also works.</p>

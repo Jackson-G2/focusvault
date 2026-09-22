@@ -12,6 +12,7 @@ from ResearchAgent.recommend import (
     redact,
     useful_candidate,
     youtube_blocked_by_focusvault,
+    youtube_blocked_by_vaulty,
 )
 
 
@@ -90,14 +91,23 @@ class RecommendationHelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "hosts"
             path.write_text(
+                "# BEGIN VAULTY MANAGED BLOCK\n"
+                "0.0.0.0 youtube.com\n"
+                "# END VAULTY MANAGED BLOCK\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(youtube_blocked_by_vaulty(path))
+            self.assertTrue(youtube_blocked_by_focusvault(path))
+            path.write_text("0.0.0.0 youtube.com\n", encoding="utf-8")
+            self.assertFalse(youtube_blocked_by_vaulty(path))
+
+            path.write_text(
                 "# BEGIN FOCUSVAULT MANAGED BLOCK\n"
                 "0.0.0.0 youtube.com\n"
                 "# END FOCUSVAULT MANAGED BLOCK\n",
                 encoding="utf-8",
             )
-            self.assertTrue(youtube_blocked_by_focusvault(path))
-            path.write_text("0.0.0.0 youtube.com\n", encoding="utf-8")
-            self.assertFalse(youtube_blocked_by_focusvault(path))
+            self.assertTrue(youtube_blocked_by_vaulty(path))
 
 
 if __name__ == "__main__":

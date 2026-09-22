@@ -14,7 +14,7 @@ public enum FocusVaultError: Error, LocalizedError, Equatable {
         case let .invalidDomain(domain):
             return "Invalid hostname: \(domain). Use a hostname such as youtube.com, not a wildcard or IP address."
         case let .malformedManagedBlock(path):
-            return "The managed FocusVault section in \(path) is malformed or duplicated; refusing to edit the file."
+            return "The managed Vaulty section in \(path) is malformed or duplicated; refusing to edit the file."
         case let .unableToRead(path, reason):
             return "Could not read \(path): \(reason)"
         case let .unableToWrite(path, reason):
@@ -24,10 +24,10 @@ public enum FocusVaultError: Error, LocalizedError, Equatable {
 }
 
 public struct FocusVaultBlocker {
-    public static let appName = "FocusVault"
-    public static let version = "0.5.0"
+    public static let appName = "Vaulty"
+    public static let version = "0.12.0"
 
-    public static let defaultDomains = [
+    public static let youtubeDomains = [
         "youtube.com",
         "www.youtube.com",
         "m.youtube.com",
@@ -38,8 +38,17 @@ public struct FocusVaultBlocker {
         "www.youtube-nocookie.com"
     ]
 
-    public static let beginMarker = "# BEGIN FOCUSVAULT MANAGED BLOCK"
-    public static let endMarker = "# END FOCUSVAULT MANAGED BLOCK"
+    /// The YouTube-only native vault remains the default compatibility mode.
+    /// Short-form protection uses its own `ShortFormBlocker` section.
+    public static let shortFormDomains = ShortFormPolicy.hostsFileDomains
+    public static let defaultDomains = youtubeDomains
+
+    public static let beginMarker = "# BEGIN VAULTY MANAGED BLOCK"
+    public static let endMarker = "# END VAULTY MANAGED BLOCK"
+    public static let kivletBeginMarker = "# BEGIN KIVLET MANAGED BLOCK"
+    public static let kivletEndMarker = "# END KIVLET MANAGED BLOCK"
+    public static let focusVaultBeginMarker = "# BEGIN FOCUSVAULT MANAGED BLOCK"
+    public static let focusVaultEndMarker = "# END FOCUSVAULT MANAGED BLOCK"
     public static let legacyBeginMarker = "# BEGIN FROSTWALL MANAGED BLOCK"
     public static let legacyEndMarker = "# END FROSTWALL MANAGED BLOCK"
     public static let defaultHostsFileURL = URL(fileURLWithPath: "/etc/hosts")
@@ -70,16 +79,54 @@ public struct FocusVaultBlocker {
         let prefixEnding: PrefixEnding
     }
 
-    private static let prefixEndingMetadata = "# FocusVault original prefix ending: "
+    private static let prefixEndingMetadata = "# Vaulty original prefix ending: "
+    private static let intermediatePrefixEndingMetadata = "# Kivlet original prefix ending: "
+    private static let legacyPrefixEndingMetadata = "# FocusVault original prefix ending: "
 
     private static let markerSets = [
         MarkerSet(begin: beginMarker, end: endMarker),
+        MarkerSet(begin: kivletBeginMarker, end: kivletEndMarker),
+        MarkerSet(begin: focusVaultBeginMarker, end: focusVaultEndMarker),
         MarkerSet(begin: legacyBeginMarker, end: legacyEndMarker)
     ]
+
+    private let activeMarkerSet: MarkerSet?
+    private let activePrefixEndingMetadata: String?
 
     public init(
         hostsFileURL: URL = FocusVaultBlocker.defaultHostsFileURL,
         domains: [String] = FocusVaultBlocker.defaultDomains
+    ) throws {
+        try self.init(
+            hostsFileURL: hostsFileURL,
+            domains: domains,
+            activeMarkerSet: nil,
+            activePrefixEndingMetadata: nil
+        )
+    }
+
+    /// Internal configuration used by independent Vaulty features that need a
+    /// second reversible section in the same hosts file.
+    init(
+        hostsFileURL: URL,
+        domains: [String],
+        managedBeginMarker: String,
+        managedEndMarker: String,
+        managedPrefixEndingMetadata: String
+    ) throws {
+        try self.init(
+            hostsFileURL: hostsFileURL,
+            domains: domains,
+            activeMarkerSet: MarkerSet(begin: managedBeginMarker, end: managedEndMarker),
+            activePrefixEndingMetadata: managedPrefixEndingMetadata
+        )
+    }
+
+    private init(
+        hostsFileURL: URL,
+        domains: [String],
+        activeMarkerSet: MarkerSet?,
+        activePrefixEndingMetadata: String?
     ) throws {
         let normalized = try domains.map(Self.normalizeDomain)
         guard !normalized.isEmpty else {
@@ -94,6 +141,8 @@ public struct FocusVaultBlocker {
 
         self.hostsFileURL = hostsFileURL
         self.domains = unique
+        self.activeMarkerSet = activeMarkerSet
+        self.activePrefixEndingMetadata = activePrefixEndingMetadata
     }
 
     public var managedBlock: String {
@@ -105,13 +154,15 @@ public struct FocusVaultBlocker {
     }
 
     private func managedBlock(using lineEnding: String, prefixEnding: PrefixEnding) -> String {
+        let markerSet = activeMarkerSet ?? MarkerSet(begin: Self.beginMarker, end: Self.endMarker)
+        let metadata = activePrefixEndingMetadata ?? Self.prefixEndingMetadata
         var lines = [
-            Self.beginMarker,
-            "# This section is managed by FocusVault. Vault in and get work done.",
-            "\(Self.prefixEndingMetadata)\(prefixEnding.rawValue)"
+            markerSet.begin,
+            "# This section is managed by Vaulty. Vault in and get work done.",
+            "\(metadata)\(prefixEnding.rawValue)"
         ]
         lines.append(contentsOf: domains.map { "0.0.0.0 \($0)" })
-        lines.append(Self.endMarker)
+        lines.append(markerSet.end)
         return lines.joined(separator: lineEnding)
     }
 
@@ -153,6 +204,15 @@ public struct FocusVaultBlocker {
     public func isBlocked() throws -> Bool {
         let contents = try readContents()
         return try managedSection(in: contents) != nil
+    }
+
+    /// Returns the exact managed section, including its markers, for callers
+    /// that need to validate the contents without trusting unrelated hosts
+    /// entries elsewhere in the file.
+    public func managedContents() throws -> String? {
+        let contents = try readContents()
+        guard let section = try managedSection(in: contents) else { return nil }
+        return String(contents[section.range])
     }
 
     public func readContents() throws -> String {
@@ -250,7 +310,8 @@ public struct FocusVaultBlocker {
     private func managedSection(in contents: String) throws -> ManagedSection? {
         var matches: [MarkerLine] = []
 
-        for (setIndex, markerSet) in Self.markerSets.enumerated() {
+        let markerSets = activeMarkerSet.map { [$0] } ?? Self.markerSets
+        for (setIndex, markerSet) in markerSets.enumerated() {
             matches.append(contentsOf: markerLines(for: markerSet.begin, setIndex: setIndex, isBegin: true, in: contents))
             matches.append(contentsOf: markerLines(for: markerSet.end, setIndex: setIndex, isBegin: false, in: contents))
         }
@@ -271,12 +332,23 @@ public struct FocusVaultBlocker {
         let normalizedInterior = interior
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
+        let metadataPrefixes = [
+            activePrefixEndingMetadata,
+            Self.prefixEndingMetadata,
+            Self.intermediatePrefixEndingMetadata,
+            Self.legacyPrefixEndingMetadata
+        ].compactMap { $0 }
         let metadataValue = normalizedInterior
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { $0.hasPrefix(Self.prefixEndingMetadata) }
-            .map { String($0.dropFirst(Self.prefixEndingMetadata.count)) }
+            .first { line in metadataPrefixes.contains { line.hasPrefix($0) } }
+            .map { line in
+                guard let prefix = metadataPrefixes.first(where: { line.hasPrefix($0) }) else {
+                    return ""
+                }
+                return String(line.dropFirst(prefix.count))
+            }
         let prefixEnding = PrefixEnding(rawValue: metadataValue ?? "") ?? .unknown
 
         return ManagedSection(
@@ -382,3 +454,6 @@ public struct FocusVaultBlocker {
         }
     }
 }
+
+public typealias VaultyError = FocusVaultError
+public typealias VaultyBlocker = FocusVaultBlocker

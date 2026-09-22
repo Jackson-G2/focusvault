@@ -75,10 +75,24 @@ public final class ProductivityLogStore {
 
     public init(
         fileURL: URL = ProductivityLogStore.defaultFileURL(),
-        initialLog: ProductivityLog = ProductivityLog()
+        initialLog: ProductivityLog = ProductivityLog(),
+        legacyFileURL: URL? = nil
     ) throws {
         self.fileURL = fileURL
         self.log = initialLog
+        let automaticLegacyFileURL: URL?
+        if fileURL.path == Self.defaultFileURL().path {
+            automaticLegacyFileURL = [
+                Self.legacyKivletFileURL(),
+                Self.legacyDefaultFileURL()
+            ].first { FileManager.default.fileExists(atPath: $0.path) }
+        } else {
+            automaticLegacyFileURL = nil
+        }
+        try Self.migrateLegacyFileIfNeeded(
+            to: fileURL,
+            from: legacyFileURL ?? automaticLegacyFileURL
+        )
         try reload()
     }
 
@@ -90,8 +104,46 @@ public final class ProductivityLogStore {
         ).first ?? fileManager.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support", isDirectory: true)
         return baseURL
+            .appendingPathComponent("Vaulty", isDirectory: true)
+            .appendingPathComponent("productivity.json")
+    }
+
+    public static func legacyKivletFileURL() -> URL {
+        defaultFileURL()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kivlet", isDirectory: true)
+            .appendingPathComponent("productivity.json")
+    }
+
+    public static func legacyDefaultFileURL() -> URL {
+        defaultFileURL()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .appendingPathComponent("FocusVault", isDirectory: true)
             .appendingPathComponent("productivity.json")
+    }
+
+    private static func migrateLegacyFileIfNeeded(to fileURL: URL, from legacyFileURL: URL?) throws {
+        guard let legacyFileURL,
+              legacyFileURL.path != fileURL.path,
+              !FileManager.default.fileExists(atPath: fileURL.path),
+              FileManager.default.fileExists(atPath: legacyFileURL.path) else {
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.copyItem(at: legacyFileURL, to: fileURL)
+        } catch {
+            throw ProductivityLogError.unableToWrite(
+                path: fileURL.path,
+                reason: "could not migrate a legacy Kivlet/FocusVault log: \(error.localizedDescription)"
+            )
+        }
     }
 
     public func reload() throws {

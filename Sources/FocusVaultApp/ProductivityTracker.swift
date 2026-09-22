@@ -2,7 +2,7 @@ import AppKit
 import CoreGraphics
 import Foundation
 import SwiftUI
-import FocusVaultCore
+import VaultyCore
 
 final class ProductivityTracker: ObservableObject {
     @Published private(set) var log: ProductivityLog
@@ -38,11 +38,15 @@ final class ProductivityTracker: ObservableObject {
         "warp"
     ]
 
-    init() {
-        store = try? ProductivityLogStore()
+    init(storeURL: URL? = nil) {
+        if let storeURL {
+            store = try? ProductivityLogStore(fileURL: storeURL, legacyFileURL: nil)
+        } else {
+            store = try? ProductivityLogStore()
+        }
         log = store?.log ?? ProductivityLog()
         if store == nil {
-            lastError = "FocusVault could not open its local productivity log."
+            lastError = "Vaulty could not open its local productivity log."
         }
     }
 

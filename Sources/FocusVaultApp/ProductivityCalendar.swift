@@ -1,5 +1,5 @@
 import SwiftUI
-import FocusVaultCore
+import VaultyCore
 
 struct ProductivityCalendar: View {
     let log: ProductivityLog
@@ -31,6 +31,7 @@ struct ProductivityCalendar: View {
                 }
             }
             .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 

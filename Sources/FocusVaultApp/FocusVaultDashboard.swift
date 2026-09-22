@@ -1,16 +1,29 @@
 import SwiftUI
-import FocusVaultCore
+import VaultyCore
 
+@MainActor
 struct FocusVaultDashboard: View {
     @EnvironmentObject private var model: FocusVaultAppModel
     @EnvironmentObject private var tracker: ProductivityTracker
     @EnvironmentObject private var learningGuide: VideoResearchModel
+    @EnvironmentObject private var toolsManager: LocalToolsManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var intentionDraft = ""
     @State private var taskEstimateText = "40"
     @State private var hasAppeared = false
     @State private var showingLearningGuide = false
+    @State private var showingSleepCalculator = false
+    @StateObject private var dashboardLayout: DashboardLayoutModel
+    @State private var draggedWidget: DashboardWidgetKind?
+
+    init() {
+        _dashboardLayout = StateObject(wrappedValue: DashboardLayoutModel())
+    }
+
+    init(dashboardLayout: DashboardLayoutModel) {
+        _dashboardLayout = StateObject(wrappedValue: dashboardLayout)
+    }
 
     var body: some View {
         ZStack {
@@ -21,18 +34,12 @@ struct FocusVaultDashboard: View {
                     topBar
                         .padding(.bottom, 24)
 
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: 20) {
-                            focusColumn
-                                .frame(maxWidth: .infinity)
-                            utilityColumn
-                                .frame(width: 286)
-                        }
-
-                        VStack(alignment: .leading, spacing: 20) {
-                            focusColumn
-                            utilityColumn
-                        }
+                    DashboardWidgetCanvas(
+                        model: dashboardLayout,
+                        draggedWidget: $draggedWidget,
+                        reduceMotion: reduceMotion
+                    ) { kind in
+                        dashboardWidget(kind)
                     }
 
                     if let error = model.lastError {
@@ -63,40 +70,131 @@ struct FocusVaultDashboard: View {
             VideoRecommendationsView()
                 .environmentObject(learningGuide)
         }
+        .sheet(isPresented: $showingSleepCalculator) {
+            SleepCalculatorView()
+        }
+        .sheet(
+            item: Binding(
+                get: { model.unlockChallengeRequest },
+                set: { request in
+                    if request == nil, model.unlockChallengeRequest != nil {
+                        model.cancelUnlockChallenge()
+                    }
+                }
+            )
+        ) { _ in
+            ZStack {
+                if let kind = model.selectedUnlockChallengeKind {
+                    switch kind {
+                    case .gridShot:
+                        GridShotChallengeView(
+                            onComplete: model.completeUnlockChallenge,
+                            onFailure: model.failUnlockChallenge,
+                            onCancel: model.cancelUnlockChallenge,
+                            onChooseAnother: model.returnToUnlockTaskHub,
+                            isUnlocking: model.isBusy,
+                            unlockError: model.unlockSubmissionError
+                        )
+                    case .typingSprint:
+                        TypingSprintChallengeView(
+                            onComplete: model.completeUnlockChallenge,
+                            onFailure: model.failUnlockChallenge,
+                            onCancel: model.cancelUnlockChallenge,
+                            onChooseAnother: model.returnToUnlockTaskHub,
+                            isUnlocking: model.isBusy,
+                            unlockError: model.unlockSubmissionError
+                        )
+                    case .signalShift:
+                        SignalShiftChallengeView(
+                            onComplete: model.completeUnlockChallenge,
+                            onLockedOut: model.failUnlockChallenge,
+                            onCancel: model.cancelUnlockChallenge,
+                            onChooseAnother: model.returnToUnlockTaskHub,
+                            isUnlocking: model.isBusy,
+                            unlockError: model.unlockSubmissionError
+                        )
+                    }
+                } else {
+                    UnlockTaskHubView(
+                        onSelect: model.chooseUnlockChallenge,
+                        onCancel: model.cancelUnlockChallenge
+                    )
+                }
+            }
+            .frame(width: UnlockChallengeLayout.width, height: UnlockChallengeLayout.height)
+            .clipped()
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+        }
     }
 
     private var topBar: some View {
         HStack(spacing: 11) {
             HStack(spacing: 10) {
-                GlassIcon(systemName: "shield.lefthalf.filled", tint: Tideglass.signal, size: 32)
-                Text("FocusVault")
+                VaultyMascot(size: 32, isProtected: model.isAnyVaultBlocked)
+                Text("Vaulty")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(Tideglass.ink)
             }
 
             Spacer()
 
+            if dashboardLayout.isEditing {
+                Button("Reset") {
+                    withAnimation { dashboardLayout.reset() }
+                }
+                .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
+                .help("Restore the default widget positions and sizes")
+                .accessibilityIdentifier("reset-dashboard-widgets")
+            }
+
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                    dashboardLayout.isEditing.toggle()
+                    if !dashboardLayout.isEditing { draggedWidget = nil }
+                }
+            } label: {
+                Label(
+                    dashboardLayout.isEditing ? "Done" : "Arrange",
+                    systemImage: dashboardLayout.isEditing ? "checkmark" : "square.grid.2x2"
+                )
+            }
+            .buttonStyle(GlassButtonStyle(
+                tint: dashboardLayout.isEditing ? Tideglass.signal : Tideglass.muted,
+                isProminent: dashboardLayout.isEditing
+            ))
+            .help(dashboardLayout.isEditing ? "Finish arranging and resizing widgets" : "Move and resize dashboard widgets")
+            .accessibilityIdentifier("arrange-dashboard-widgets")
+
             GlassPill(
-                title: model.isBusy ? "Working" : (model.isSystemBlocked ? "Vaulted" : "Open"),
-                systemImage: model.isSystemBlocked ? "lock.fill" : "lock.open",
-                tint: model.isBusy ? Tideglass.signal : (model.isSystemBlocked ? Tideglass.seafoam : Tideglass.muted)
+                title: model.isBusy ? "Working" : (model.isAnyVaultBlocked ? "Vaulted" : "Open"),
+                lockState: model.isAnyVaultBlocked ? .locked : .open,
+                tint: model.isBusy ? Tideglass.signal : (model.isAnyVaultBlocked ? Tideglass.seafoam : Tideglass.muted)
             )
         }
         .opacity(hasAppeared || reduceMotion ? 1 : 0)
         .offset(y: hasAppeared || reduceMotion ? 0 : -6)
     }
 
-    private var focusColumn: some View {
-        VStack(alignment: .leading, spacing: 20) {
+    @ViewBuilder
+    private func dashboardWidget(_ kind: DashboardWidgetKind) -> some View {
+        switch kind {
+        case .intention:
             intentionCard
+        case .taskClock:
             taskClockCard
-        }
-    }
-
-    private var utilityColumn: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        case .youtubeProtection:
             protectionCard
+        case .shortFormProtection:
+            shortFormProtectionCard
+        case .localTools:
+            LocalToolsWidget()
+        case .sleepCalculator:
+            sleepCalculatorCard
+        case .learningGuide:
             learningGuideCard
+        case .rhythm:
             ProductivityCalendar(log: tracker.log)
         }
     }
@@ -126,6 +224,7 @@ struct FocusVaultDashboard: View {
                         .onSubmit {
                             model.saveIntention(intentionDraft)
                         }
+                        .accessibilityIdentifier("intention-field")
                 }
 
                 Text("A reason is enough.")
@@ -133,6 +232,7 @@ struct FocusVaultDashboard: View {
                     .foregroundStyle(Tideglass.muted)
             }
             .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -166,6 +266,7 @@ struct FocusVaultDashboard: View {
                 taskClockContent
             }
             .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -190,7 +291,7 @@ struct FocusVaultDashboard: View {
                         .foregroundStyle(Tideglass.ink)
                         .lineLimit(3)
 
-                    Text("The vault stays closed until you choose otherwise.")
+                    Text("The YouTube blocker stays closed until you choose otherwise.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Tideglass.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -202,11 +303,13 @@ struct FocusVaultDashboard: View {
                             Label("Pause", systemImage: "pause.fill")
                         }
                         .buttonStyle(GlassButtonStyle(tint: Tideglass.signal))
+                        .accessibilityIdentifier("pause-task-clock")
 
                         Button("End clock") {
                             model.endFocusSession()
                         }
                         .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
+                        .accessibilityIdentifier("end-task-clock")
                     }
                 }
             }
@@ -238,11 +341,13 @@ struct FocusVaultDashboard: View {
                             Label("Resume", systemImage: "play.fill")
                         }
                         .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
+                        .accessibilityIdentifier("resume-task-clock")
 
                         Button("End clock") {
                             model.endFocusSession()
                         }
                         .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
+                        .accessibilityIdentifier("end-paused-task-clock")
                     }
                 }
             }
@@ -269,6 +374,7 @@ struct FocusVaultDashboard: View {
                 }
                 .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
                 .disabled(model.isBusy || taskEstimateMinutes == nil)
+                .accessibilityIdentifier("start-another-task-clock")
             }
         }
     }
@@ -287,7 +393,7 @@ struct FocusVaultDashboard: View {
                     Text("Set the time before you start.")
                         .font(.system(size: 21, weight: .semibold, design: .rounded))
                         .foregroundStyle(Tideglass.ink)
-                    Text(model.isSystemBlocked ? "The vault is already ready." : "Starting will engage the full vault.")
+                    Text(model.isSystemBlocked ? "The YouTube blocker is already ready." : "Starting will block YouTube.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Tideglass.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -303,6 +409,7 @@ struct FocusVaultDashboard: View {
             }
             .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
             .disabled(model.isBusy || taskEstimateMinutes == nil)
+            .accessibilityIdentifier("start-task-clock")
         }
     }
 
@@ -353,6 +460,7 @@ struct FocusVaultDashboard: View {
                 .contentShape(Capsule())
                 .help("Edit task estimate in minutes")
                 .accessibilityLabel("Task estimate in minutes")
+                .accessibilityIdentifier("task-estimate-field")
             }
 
             if taskEstimateMinutes == nil {
@@ -360,6 +468,38 @@ struct FocusVaultDashboard: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Tideglass.coral)
             }
+        }
+    }
+
+    private var sleepCalculatorCard: some View {
+        GlassCard(cornerRadius: 20, tint: Tideglass.seafoam) {
+            HStack(spacing: 12) {
+                GlassIcon(systemName: "bed.double.fill", tint: Tideglass.seafoam, size: 34)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sleep calculator")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Tideglass.ink)
+                    Text("Plan bedtime from sleep cycles")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Tideglass.muted)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 4)
+
+                Button {
+                    showingSleepCalculator = true
+                } label: {
+                    Text("Open")
+                }
+                .buttonStyle(GlassButtonStyle(tint: Tideglass.seafoam, isProminent: true))
+                .help("Open sleep calculator")
+                .accessibilityLabel("Open sleep calculator")
+                .accessibilityIdentifier("open-sleep-calculator")
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 
@@ -400,9 +540,11 @@ struct FocusVaultDashboard: View {
                     .buttonStyle(GlassButtonStyle(tint: Tideglass.signal, isProminent: true))
                     .help(learningGuideActionTitle)
                     .accessibilityLabel(learningGuideActionTitle)
+                    .accessibilityIdentifier("learning-guide-action")
                 }
             }
             .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 
@@ -433,29 +575,31 @@ struct FocusVaultDashboard: View {
         GlassCard(cornerRadius: 24, tint: model.isSystemBlocked ? Tideglass.seafoam : Tideglass.signal) {
             VStack(alignment: .leading, spacing: 17) {
                 HStack {
-                    Text("PROTECTION")
+                    Text("YOUTUBE PROTECTION")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .tracking(1.6)
                         .foregroundStyle(Tideglass.muted)
                     Spacer()
                     GlassPill(
-                        title: model.isSystemBlocked ? "On" : "Off",
-                        systemImage: model.isSystemBlocked ? "checkmark" : "minus",
-                        tint: model.isSystemBlocked ? Tideglass.seafoam : Tideglass.muted
+                        title: model.isSystemBlocked ? "Locked" : model.youtubeUnlockTimeText,
+                        lockState: model.isSystemBlocked ? .locked : .open,
+                        tint: model.isSystemBlocked ? Tideglass.seafoam : Tideglass.signal
                     )
                 }
 
                 HStack(spacing: 12) {
                     GlassIcon(
-                        systemName: model.isSystemBlocked ? "lock.fill" : "lock.open",
+                        lockState: model.isSystemBlocked ? .locked : .open,
                         tint: model.isSystemBlocked ? Tideglass.seafoam : Tideglass.signal,
                         size: 38
                     )
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Full vault")
+                        Text("YouTube blocker")
                             .font(.system(size: 15, weight: .semibold, design: .rounded))
                             .foregroundStyle(Tideglass.ink)
-                        Text(model.isSystemBlocked ? "YouTube is closed everywhere" : "YouTube is open")
+                        Text(model.isSystemBlocked
+                            ? "Task + administrator approval"
+                            : "Open now · auto-locks at 45 minutes")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Tideglass.muted)
                             .fixedSize(horizontal: false, vertical: true)
@@ -464,13 +608,24 @@ struct FocusVaultDashboard: View {
                     Button {
                         model.toggleFullVault()
                     } label: {
-                        Image(systemName: model.isSystemBlocked ? "lock.open.fill" : "lock.fill")
+                        HStack(spacing: 6) {
+                            VaultLockGlyph(state: model.isSystemBlocked ? .locked : .open, size: 14)
+                            Text(model.isSystemBlocked ? "Unlock" : "Lock now")
+                        }
                     }
                     .buttonStyle(GlassButtonStyle(tint: model.isSystemBlocked ? Tideglass.seafoam : Tideglass.signal, isProminent: true))
                     .disabled(model.isBusy)
-                    .help(model.isSystemBlocked ? "Open full vault" : "Engage full vault")
-                    .accessibilityLabel(model.isSystemBlocked ? "Open full vault" : "Engage full vault")
+                    .help(model.isSystemBlocked ? "Choose a task, win, then approve the 45-minute unlock" : "Lock YouTube without a password")
+                    .accessibilityLabel(model.isSystemBlocked ? "Unlock YouTube for 45 minutes" : "Lock YouTube now without a password")
+                    .accessibilityIdentifier("toggle-youtube-vault")
                 }
+
+                Text(model.isGuardInstalled
+                    ? "Lock anytime with no password. Every unlock lasts 45 minutes."
+                    : "One administrator approval installs the guard; after that, only unlocking asks for a password.")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Tideglass.muted)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Divider().overlay(Tideglass.line)
 
@@ -479,7 +634,7 @@ struct FocusVaultDashboard: View {
                         Text("Channel vault")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(Tideglass.ink)
-                        Text("Keep trusted channels only")
+                        Text("Keep trusted YouTube channels only")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Tideglass.muted)
                     }
@@ -492,9 +647,69 @@ struct FocusVaultDashboard: View {
                     .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
                     .help("Open channel-vault setup")
                     .accessibilityLabel("Open channel-vault setup")
+                    .accessibilityIdentifier("open-channel-vault-setup")
                 }
             }
             .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private var shortFormProtectionCard: some View {
+        GlassCard(cornerRadius: 24, tint: model.isShortFormBlocked ? Tideglass.seafoam : Tideglass.signal) {
+            VStack(alignment: .leading, spacing: 17) {
+                HStack {
+                    Text("SHORT-FORM PROTECTION")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .tracking(1.6)
+                        .foregroundStyle(Tideglass.muted)
+                    Spacer()
+                    GlassPill(
+                        title: model.isShortFormBlocked ? "On" : "Off",
+                        systemImage: model.isShortFormBlocked ? "checkmark" : "minus",
+                        tint: model.isShortFormBlocked ? Tideglass.seafoam : Tideglass.muted
+                    )
+                }
+
+                HStack(spacing: 12) {
+                    GlassIcon(
+                        systemName: model.isShortFormBlocked ? "hourglass" : "hourglass.bottomhalf.filled",
+                        tint: model.isShortFormBlocked ? Tideglass.seafoam : Tideglass.signal,
+                        size: 38
+                    )
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Short-form blocker")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Tideglass.ink)
+                        Text(model.isShortFormBlocked
+                            ? "TikTok, Reels, and Shorts are closed"
+                            : "TikTok, Reels, and Shorts are open")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Tideglass.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 4)
+                    Button {
+                        model.toggleShortFormVault()
+                    } label: {
+                        VaultLockGlyph(state: model.isShortFormBlocked ? .locked : .open, size: 15)
+                    }
+                    .buttonStyle(GlassButtonStyle(tint: model.isShortFormBlocked ? Tideglass.seafoam : Tideglass.signal, isProminent: true))
+                    .disabled(model.isBusy || model.youtubeUnlockRemainingSeconds > 0)
+                    .help(model.youtubeUnlockRemainingSeconds > 0
+                        ? "Lock YouTube before changing system-wide short-form protection"
+                        : (model.isShortFormBlocked ? "Open short-form blocker" : "Engage short-form blocker"))
+                    .accessibilityLabel(model.isShortFormBlocked ? "Open short-form blocker" : "Engage short-form blocker")
+                    .accessibilityIdentifier("toggle-short-form-vault")
+                }
+
+                Text("TikTok · Instagram Reels · YouTube Shorts · Facebook Reels")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Tideglass.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -515,6 +730,7 @@ struct FocusVaultDashboard: View {
             .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
             .help("Dismiss error")
             .accessibilityLabel("Dismiss error")
+            .accessibilityIdentifier("dismiss-error")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 13)

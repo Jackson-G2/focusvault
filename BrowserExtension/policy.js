@@ -3,6 +3,8 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
   } else {
+    root.VaultyPolicy = api;
+    root.KivletPolicy = api;
     root.FocusVaultPolicy = api;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
@@ -27,8 +29,124 @@
     "m.youtube.com",
     "music.youtube.com",
     "youtu.be",
-    "www.youtu.be"
+    "www.youtu.be",
+    "youtube-nocookie.com",
+    "www.youtube-nocookie.com"
   ]);
+
+  const SHORT_FORM_PLATFORMS = Object.freeze({
+    tiktok: Object.freeze({
+      name: "TikTok",
+      hosts: ["tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"],
+      routes: null
+    }),
+    instagram: Object.freeze({
+      name: "Instagram Reels",
+      hosts: ["instagram.com", "www.instagram.com", "m.instagram.com"],
+      routes: ["reel", "reels", "stories"]
+    }),
+    youtube: Object.freeze({
+      name: "YouTube Shorts",
+      hosts: [
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "music.youtube.com",
+        "youtu.be",
+        "www.youtu.be",
+        "youtube-nocookie.com",
+        "www.youtube-nocookie.com"
+      ],
+      routes: ["shorts"]
+    }),
+    facebook: Object.freeze({
+      name: "Facebook Reels",
+      hosts: ["facebook.com", "www.facebook.com", "m.facebook.com", "web.facebook.com", "fb.watch"],
+      routes: ["reel", "reels"]
+    })
+  });
+
+  const SHORT_FORM_HOSTS = new Set(
+    Object.values(SHORT_FORM_PLATFORMS).flatMap((platform) => platform.hosts)
+  );
+
+  function hostMatches(host, domains) {
+    return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  }
+
+  function shortFormPlatformForHost(rawHost) {
+    const host = String(rawHost || "").trim().toLowerCase().replace(/^\.+|\.+$/g, "");
+    if (!host) return null;
+    return Object.entries(SHORT_FORM_PLATFORMS).find(([, platform]) =>
+      hostMatches(host, platform.hosts)
+    )?.[0] || null;
+  }
+
+  function firstPathSegment(pathname) {
+    return String(pathname || "")
+      .split("/")
+      .filter(Boolean)[0]
+      ?.toLowerCase() || "";
+  }
+
+  function decisionForShortFormUrl(rawUrl) {
+    let url;
+    try {
+      url = new URL(rawUrl);
+    } catch (_) {
+      return { state: "block", reason: "invalid-url" };
+    }
+
+    const platform = shortFormPlatformForHost(url.hostname);
+    if (!platform) return { state: "outside" };
+
+    const definition = SHORT_FORM_PLATFORMS[platform];
+    if (platform === "tiktok") {
+      return {
+        state: "block",
+        platform,
+        platformName: definition.name,
+        reason: "tiktok-is-short-form-by-design"
+      };
+    }
+
+    const route = firstPathSegment(url.pathname);
+    if (platform === "facebook" && hostMatches(url.hostname.toLowerCase(), ["fb.watch"])) {
+      return {
+        state: "block",
+        platform,
+        platformName: definition.name,
+        reason: "facebook-short-link"
+      };
+    }
+    if (definition.routes.includes(route)) {
+      return {
+        state: "block",
+        platform,
+        platformName: definition.name,
+        reason: "known-short-form-route"
+      };
+    }
+
+    return {
+      state: "not-short-form",
+      platform,
+      platformName: definition.name,
+      reason: "not-a-known-short-form-route"
+    };
+  }
+
+  function isShortFormBlockedUrl(rawUrl) {
+    return decisionForShortFormUrl(rawUrl).state === "block";
+  }
+
+  function shortFormPlatformForUrl(rawUrl) {
+    try {
+      return shortFormPlatformForHost(new URL(rawUrl).hostname);
+    } catch (_) {
+      return null;
+    }
+  }
 
   function unique(values) {
     return [...new Set(values)];
@@ -212,6 +330,12 @@
   return {
     DEFAULT_CHANNELS,
     YOUTUBE_HOSTS,
+    SHORT_FORM_PLATFORMS,
+    SHORT_FORM_HOSTS,
+    decisionForShortFormUrl,
+    isShortFormBlockedUrl,
+    shortFormPlatformForHost,
+    shortFormPlatformForUrl,
     normalizeHandle,
     normalizeChannelId,
     normalizeChannel,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FocusVault's local, transcript-grounded learning researcher.
+"""Vaulty's local, transcript-grounded learning researcher.
 
 The app starts this process only after an explicit user action. Stdout is a
 single JSON document; progress and diagnostics go to stderr.
@@ -190,7 +190,7 @@ def session_digest() -> Tuple[str, Dict[str, Any]]:
 
 
 def pi_path() -> Optional[str]:
-    configured = os.environ.get("FOCUSVAULT_PI_PATH")
+    configured = os.environ.get("VAULTY_PI_PATH") or os.environ.get("KIVLET_PI_PATH") or os.environ.get("FOCUSVAULT_PI_PATH")
     candidates = [configured] if configured else []
     candidates.extend(["/opt/homebrew/bin/pi", "/usr/local/bin/pi"])
     discovered = shutil.which("pi")
@@ -210,7 +210,7 @@ def run_pi(prompt: str, timeout: int = 240) -> str:
     prompt_path = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", prefix="focusvault-prompt-", delete=False, encoding="utf-8"
+            mode="w", suffix=".md", prefix="vaulty-prompt-", delete=False, encoding="utf-8"
         ) as handle:
             handle.write(prompt)
             prompt_path = Path(handle.name)
@@ -324,20 +324,34 @@ def fetch_url(url: str) -> str:
         return response.read(5_000_000).decode("utf-8", "replace")
 
 
-def youtube_blocked_by_focusvault(hosts_path: Optional[Path] = None) -> bool:
+def youtube_blocked_by_vaulty(hosts_path: Optional[Path] = None) -> bool:
     hosts_path = hosts_path or Path("/etc/hosts")
     try:
         contents = hosts_path.read_text(encoding="utf-8")
     except OSError:
         return False
-    managed_lines = contents.split("# BEGIN FOCUSVAULT MANAGED BLOCK", 1)
-    if len(managed_lines) != 2:
-        return False
-    managed_section = managed_lines[1].split("# END FOCUSVAULT MANAGED BLOCK", 1)[0]
-    return any(
-        re.match(r"^\s*0\.0\.0\.0\s+(?:www\.)?youtube\.com\s*$", line, flags=re.IGNORECASE)
-        for line in managed_section.splitlines()
-    )
+
+    marker_pairs = [
+        ("# BEGIN VAULTY MANAGED BLOCK", "# END VAULTY MANAGED BLOCK"),
+        ("# BEGIN KIVLET MANAGED BLOCK", "# END KIVLET MANAGED BLOCK"),
+        ("# BEGIN FOCUSVAULT MANAGED BLOCK", "# END FOCUSVAULT MANAGED BLOCK"),
+        ("# BEGIN FROSTWALL MANAGED BLOCK", "# END FROSTWALL MANAGED BLOCK"),
+    ]
+    for begin_marker, end_marker in marker_pairs:
+        managed_lines = contents.split(begin_marker, 1)
+        if len(managed_lines) != 2:
+            continue
+        managed_section = managed_lines[1].split(end_marker, 1)[0]
+        return any(
+            re.match(r"^\s*0\.0\.0\.0\s+(?:www\.)?youtube\.com\s*$", line, flags=re.IGNORECASE)
+            for line in managed_section.splitlines()
+        )
+    return False
+
+
+# Compatibility aliases for callers written before the Vaulty rename.
+youtube_blocked_by_kivlet = youtube_blocked_by_vaulty
+youtube_blocked_by_focusvault = youtube_blocked_by_vaulty
 
 
 def walk_dicts(value: Any) -> Iterable[Dict[str, Any]]:
@@ -467,7 +481,7 @@ def parse_srv1(path: Path) -> str:
 
 
 def yt_dlp_path() -> Optional[str]:
-    configured = os.environ.get("FOCUSVAULT_YTDLP_PATH")
+    configured = os.environ.get("VAULTY_YTDLP_PATH") or os.environ.get("KIVLET_YTDLP_PATH") or os.environ.get("FOCUSVAULT_YTDLP_PATH")
     candidates = [configured] if configured else []
     candidates.extend(["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"])
     discovered = shutil.which("yt-dlp")
@@ -630,7 +644,7 @@ def run_recommendation() -> Dict[str, Any]:
             "diagnostics": ["The session history did not produce a concrete learning topic."],
         }
 
-    if youtube_blocked_by_focusvault():
+    if youtube_blocked_by_vaulty():
         return {
             "schemaVersion": 1,
             "generatedAt": now_iso(),
@@ -640,7 +654,7 @@ def run_recommendation() -> Dict[str, Any]:
             "topics": topics,
             "recommendations": [],
             "diagnostics": [
-                "YouTube is blocked by the active FocusVault vault. Open the vault before researching lessons."
+                "YouTube is blocked by the active Vaulty vault. Open the vault before researching lessons."
             ],
         }
 
@@ -659,13 +673,13 @@ def run_recommendation() -> Dict[str, Any]:
                 enriched = dict(result)
                 enriched["topic"] = topic["topic"]
                 candidates.append(enriched)
-            time.sleep(float(os.environ.get("FOCUSVAULT_YOUTUBE_DELAY", "0.5")))
+            time.sleep(float(os.environ.get("VAULTY_YOUTUBE_DELAY", os.environ.get("KIVLET_YOUTUBE_DELAY", os.environ.get("FOCUSVAULT_YOUTUBE_DELAY", "0.5")))))
             if len(candidates) >= 16:
                 break
         if len(candidates) >= 16:
             break
 
-    with tempfile.TemporaryDirectory(prefix="focusvault-transcripts-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="vaulty-transcripts-") as temporary:
         directory = Path(temporary)
         transcript_candidates: List[Dict[str, str]] = []
         for candidate in candidates[:12]:

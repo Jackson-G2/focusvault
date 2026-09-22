@@ -1,7 +1,10 @@
 (() => {
-  const policy = globalThis.FocusVaultPolicy;
+  const policy = globalThis.VaultyPolicy;
   const list = document.getElementById("channel-list");
   const message = document.getElementById("message");
+  const guardStatus = document.getElementById("guard-status");
+  const saveButton = document.getElementById("save");
+  const resetButton = document.getElementById("reset");
 
   function lineForChannel(channel) {
     const handle = channel.handles?.[0] ? `@${channel.handles[0]}` : "";
@@ -68,7 +71,30 @@
     message.className = "message success";
   }
 
-  document.getElementById("save").addEventListener("click", save);
-  document.getElementById("reset").addEventListener("click", reset);
+  function loadGuardStatus() {
+    chrome.runtime.sendMessage(
+      { type: "vaulty-session-status", force: true },
+      (status) => {
+        const locked = !chrome.runtime.lastError && status?.installed === true && status.locked !== false;
+        list.disabled = locked;
+        saveButton.disabled = locked;
+        resetButton.disabled = locked;
+        if (locked) {
+          guardStatus.textContent = "YouTube is locked. Fallback channel edits are held until a verified 45-minute session is open.";
+          guardStatus.className = "message success";
+        } else if (status?.installed === true) {
+          guardStatus.textContent = "Timed YouTube session open. Fallback settings can be edited now.";
+          guardStatus.className = "message";
+        } else {
+          guardStatus.textContent = "Native guard unavailable. This allowlist is currently the active fallback.";
+          guardStatus.className = "message";
+        }
+      }
+    );
+  }
+
+  saveButton.addEventListener("click", save);
+  resetButton.addEventListener("click", reset);
   load();
+  loadGuardStatus();
 })();

@@ -1,20 +1,29 @@
 {
   "manifest_version": 3,
-  "name": "FocusVault — YouTube Channel Vault",
-  "version": "0.5.0",
-  "description": "Allow only your chosen YouTube channels so you can vault in and get work done.",
+  "name": "Vaulty — Short-form & Channel Vault",
+  "version": "0.12.0",
+  "description": "Block short-form content and enforce Vaulty’s password-plus-challenge YouTube sessions.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyItFteeRLnfEwngEppldbO1CafFNNrpqS7ukLOIwrNy6B2ysq7ldh9QLqsVNK1ITfz8dTWTLOkLiJWJpQKMwaFjP62lkuH6vA1m7wgCXu6Slmq8mCGWRDYtKsdPOVoD3+PbBmmsre32ctBwEPMvr0OsNXnUT7zTWDE7jRkYZdpalogQDtwSeppALSILQcCPzJBK/JIUWQOoTS5LVok6MmFNHF1rmllvPEU6oWlYZ8+IpdVdIYuQLOlqmH4quZUCPnjoFlQrHrUT7oofp9PuXbbhZiRTkSyJQjBIgilK7KWnXSc+JbZ8a+pw0Yujc1e+bB5NKJwW3jFPKOpTxGLvqrQIDAQAB",
   "permissions": [
-    "storage"
+    "storage",
+    "nativeMessaging",
+    "alarms",
+    "tabs"
   ],
   "host_permissions": [
     "*://*.youtube.com/*",
-    "*://youtu.be/*"
+    "*://youtu.be/*",
+    "*://*.tiktok.com/*",
+    "*://*.instagram.com/*",
+    "*://*.facebook.com/*",
+    "*://fb.watch/*",
+    "*://*.fb.watch/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "FocusVault channel vault",
+    "default_title": "Vaulty short-form vault",
     "default_popup": "popup.html"
   },
   "options_page": "options.html",
@@ -22,10 +31,16 @@
     {
       "matches": [
         "*://*.youtube.com/*",
-        "*://youtu.be/*"
+        "*://youtu.be/*",
+        "*://*.tiktok.com/*",
+        "*://*.instagram.com/*",
+        "*://*.facebook.com/*",
+        "*://fb.watch/*",
+        "*://*.fb.watch/*"
       ],
       "js": [
         "policy.js",
+        "session-policy.js",
         "content.js"
       ],
       "css": [
@@ -43,7 +58,12 @@
       ],
       "matches": [
         "*://*.youtube.com/*",
-        "*://youtu.be/*"
+        "*://youtu.be/*",
+        "*://*.tiktok.com/*",
+        "*://*.instagram.com/*",
+        "*://*.facebook.com/*",
+        "*://fb.watch/*",
+        "*://*.fb.watch/*"
       ]
     }
   ]

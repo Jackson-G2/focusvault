@@ -3,21 +3,35 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>FocusVault</string>
+    <string>Vaulty</string>
     <key>CFBundleExecutable</key>
-    <string>FocusVault</string>
+    <string>Vaulty</string>
     <key>CFBundleIdentifier</key>
+    <!-- Keep the original identifier so existing macOS preferences/permissions remain attached. -->
     <string>com.jacksongb.focusvault</string>
+    <key>CFBundleIconFile</key>
+    <string>Vaulty</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>FocusVault</string>
+    <string>Vaulty</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.jacksongb.vaulty.unlock</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>vaulty</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleShortVersionString</key>
-    <string>0.5.0</string>
+    <string>0.12.0</string>
     <key>CFBundleVersion</key>
-    <string>0.5.0</string>
+    <string>0.12.0</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>LSMinimumSystemVersion</key>
