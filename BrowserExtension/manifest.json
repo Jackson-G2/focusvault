@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vaulty — Short-form & Channel Vault",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Block short-form content and enforce Vaulty’s password-plus-challenge YouTube sessions.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyItFteeRLnfEwngEppldbO1CafFNNrpqS7ukLOIwrNy6B2ysq7ldh9QLqsVNK1ITfz8dTWTLOkLiJWJpQKMwaFjP62lkuH6vA1m7wgCXu6Slmq8mCGWRDYtKsdPOVoD3+PbBmmsre32ctBwEPMvr0OsNXnUT7zTWDE7jRkYZdpalogQDtwSeppALSILQcCPzJBK/JIUWQOoTS5LVok6MmFNHF1rmllvPEU6oWlYZ8+IpdVdIYuQLOlqmH4quZUCPnjoFlQrHrUT7oofp9PuXbbhZiRTkSyJQjBIgilK7KWnXSc+JbZ8a+pw0Yujc1e+bB5NKJwW3jFPKOpTxGLvqrQIDAQAB",
   "permissions": [

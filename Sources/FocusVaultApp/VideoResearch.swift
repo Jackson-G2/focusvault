@@ -232,6 +232,7 @@ final class VideoResearchModel: ObservableObject {
             var environment = ProcessInfo.processInfo.environment
             environment["PYTHONUNBUFFERED"] = "1"
             environment["NO_COLOR"] = "1"
+            environment["PATH"] = Self.augmentedPath(environment["PATH"])
             process.environment = environment
             activeProcess = process
 
@@ -270,6 +271,16 @@ final class VideoResearchModel: ObservableObject {
                 completion(.failure(error))
             }
         }
+    }
+
+    private static func augmentedPath(_ existing: String?) -> String {
+        let homeBin = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local/bin").path
+        let extras = [
+            "/opt/homebrew/bin", "/usr/local/bin", homeBin,
+            "/usr/bin", "/bin", "/usr/sbin", "/sbin"
+        ]
+        return (extras + (existing.map { [$0] } ?? [])).joined(separator: ":")
     }
 
     private func locateScript() throws -> URL {

@@ -17,7 +17,7 @@ struct VideoRecommendationsView: View {
                         topicSummary(result.topics)
 
                         if result.recommendations.isEmpty {
-                            emptyRecommendations(result.diagnostics)
+                            emptyRecommendations(result)
                         } else {
                             ForEach(result.recommendations) { recommendation in
                                 VideoRecommendationCard(
@@ -71,6 +71,13 @@ struct VideoRecommendationsView: View {
                 }
             }
             Spacer()
+            Button(research.isResearching ? "Refreshing…" : "Refresh") {
+                research.research()
+            }
+            .buttonStyle(GlassButtonStyle(tint: Tideglass.signal))
+            .disabled(research.isResearching)
+            .help("Run the researcher again")
+
             Button("Close") {
                 dismiss()
             }
@@ -94,6 +101,10 @@ struct VideoRecommendationsView: View {
                         Text(topic.topic)
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
                             .foregroundStyle(Tideglass.ink)
+                        Text(topic.goal)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Tideglass.seafoam)
+                            .lineLimit(2)
                         Text(topic.reason)
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(Tideglass.muted)
@@ -110,15 +121,29 @@ struct VideoRecommendationsView: View {
         }
     }
 
-    private func emptyRecommendations(_ diagnostics: [String]) -> some View {
+    private func emptyRecommendations(_ result: VideoResearchResult) -> some View {
         GlassCard(cornerRadius: 20, tint: Tideglass.signal) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("No strong lesson found yet.")
+            VStack(alignment: .leading, spacing: 10) {
+                Text("No lesson videos yet.")
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(Tideglass.ink)
-                Text(diagnostics.first ?? "The researcher needs a reachable transcript before it can recommend a video.")
+                Text(result.diagnostics.first ?? "The researcher needs a reachable transcript before it can recommend a video.")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Tideglass.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                let queries = result.topics.flatMap { $0.searchQueries }
+                if !queries.isEmpty {
+                    Text("Suggested searches")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(Tideglass.seafoam)
+                    ForEach(Array(queries.enumerated()), id: \.offset) { item in
+                        Text("\u{2022} \(item.element)")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Tideglass.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
             .padding(20)
         }
@@ -158,16 +183,22 @@ private struct VideoRecommendationCard: View {
                             .font(.system(size: 18, weight: .semibold, design: .rounded))
                             .foregroundStyle(Tideglass.ink)
                             .lineLimit(3)
-                        Text([recommendation.channel, recommendation.length].filter { !$0.isEmpty }.joined(separator: "  ·  "))
+                        Text([recommendation.channel, recommendation.length, recommendation.published].filter { !$0.isEmpty }.joined(separator: "  ·  "))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Tideglass.muted)
                     }
                     Spacer(minLength: 8)
-                    Text(recommendation.topic)
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(Tideglass.seafoam)
-                        .multilineTextAlignment(.trailing)
-                        .lineLimit(2)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(recommendation.topic)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundStyle(Tideglass.seafoam)
+                            .multilineTextAlignment(.trailing)
+                            .lineLimit(2)
+                        Text("\(Int((recommendation.confidence * 100).rounded()))% match")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Tideglass.muted)
+                            .monospacedDigit()
+                    }
                 }
 
                 Text(recommendation.whyHelpful)
@@ -185,11 +216,32 @@ private struct VideoRecommendationCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let firstNote = recommendation.notes.first {
-                    Text(firstNote)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Tideglass.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+                if !recommendation.notes.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Notes")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(Tideglass.seafoam)
+                        ForEach(Array(recommendation.notes.enumerated()), id: \.offset) { item in
+                            Text("\u{2022} \(item.element)")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Tideglass.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                if !recommendation.cautions.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Keep in mind")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(Tideglass.coral)
+                        ForEach(Array(recommendation.cautions.enumerated()), id: \.offset) { item in
+                            Text("\u{2022} \(item.element)")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Tideglass.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
 
                 if let evidence = recommendation.evidence.first {

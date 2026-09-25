@@ -529,7 +529,7 @@ struct FocusVaultDashboard: View {
 
                 if !learningGuide.isResearching {
                     Button {
-                        if learningGuide.result?.recommendations.isEmpty == false {
+                        if learningGuide.result != nil {
                             showingLearningGuide = true
                         } else {
                             learningGuide.research()
@@ -565,10 +565,10 @@ struct FocusVaultDashboard: View {
     }
 
     private var learningGuideActionTitle: String {
-        if learningGuide.result?.recommendations.isEmpty == false {
-            return "Open"
+        if let result = learningGuide.result {
+            return result.recommendations.isEmpty ? "View" : "Open"
         }
-        return learningGuide.researchError == nil && learningGuide.result == nil ? "Research" : "Retry"
+        return learningGuide.researchError == nil ? "Research" : "Retry"
     }
 
     private var protectionCard: some View {
