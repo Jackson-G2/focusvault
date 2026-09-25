@@ -189,6 +189,18 @@ def session_digest() -> Tuple[str, Dict[str, Any]]:
     return "\n".join(lines), audit
 
 
+def augmented_env(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """Environment with a deliberate PATH so GUI-launched apps can find node and yt-dlp."""
+    env = dict(os.environ)
+    home_bin = str(Path.home() / ".local/bin")
+    extra_dirs = ["/opt/homebrew/bin", "/usr/local/bin", home_bin, "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+    current = env.get("PATH", "")
+    env["PATH"] = ":".join(extra_dirs + ([current] if current else []))
+    if extra:
+        env.update(extra)
+    return env
+
+
 def pi_path() -> Optional[str]:
     configured = os.environ.get("VAULTY_PI_PATH") or os.environ.get("KIVLET_PI_PATH") or os.environ.get("FOCUSVAULT_PI_PATH")
     candidates = [configured] if configured else []
@@ -231,7 +243,7 @@ def run_pi(prompt: str, timeout: int = 240) -> str:
             text=True,
             timeout=timeout,
             check=False,
-            env={**os.environ, "NO_COLOR": "1"},
+            env=augmented_env({"NO_COLOR": "1"}),
         )
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "Pi returned a non-zero status").strip()
@@ -514,7 +526,7 @@ def fetch_transcript(candidate: Dict[str, str], directory: Path) -> str:
         candidate["url"],
     ]
     try:
-        subprocess.run(command, capture_output=True, text=True, timeout=55, check=False)
+        subprocess.run(command, capture_output=True, text=True, timeout=55, check=False, env=augmented_env())
     except (OSError, subprocess.TimeoutExpired):
         return ""
     files = sorted(directory.glob(candidate["videoId"] + ".*.srv1"))
