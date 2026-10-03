@@ -235,6 +235,14 @@ final class LocalToolRuntime: ObservableObject, Identifiable, @unchecked Sendabl
     fileprivate var supervisorPID: pid_t?
     fileprivate var logHandle: FileHandle?
     fileprivate var readinessWorkItem: DispatchWorkItem?
+    fileprivate var generation = UUID()
+    fileprivate var statusGeneration = UUID()
+    fileprivate var restartPending = false
+    fileprivate var reusedPorts: Set<Int> = []
+
+    var ownedPID: pid_t? { supervisorPID }
+    var canCancel: Bool { state == .checking || state == .starting }
+    var canControlOwned: Bool { supervisorPID != nil && state != .stopping && !canCancel }
 
     init(definition: LocalToolDefinition) {
         id = definition.id
@@ -245,7 +253,7 @@ final class LocalToolRuntime: ObservableObject, Identifiable, @unchecked Sendabl
         state == .runningOwned || state == .runningExternal
     }
 
-    var isOwned: Bool { state == .runningOwned }
+    var isOwned: Bool { supervisorPID != nil }
 
     var actionTitle: String {
         switch state {
@@ -315,10 +323,15 @@ private struct LocalToolRunRecord: Codable {
     let supervisorExecutablePath: String
     let configurationPath: String
     let startedAt: Date
+    var reusedPorts: [Int]? = nil
+    var startSeconds: UInt64? = nil
+    var startMicroseconds: UInt64? = nil
 }
 
 enum LocalToolProcessSupervisor {
     static func run(configurationPath: String) -> Int32 {
+        let handledSignals = [SIGTERM, SIGINT, SIGHUP]
+        handledSignals.forEach { signal($0, SIG_IGN) }
         do {
             let data = try Data(contentsOf: URL(fileURLWithPath: configurationPath))
             let config = try JSONDecoder().decode(LocalToolSupervisorConfiguration.self, from: data)
@@ -353,20 +366,22 @@ enum LocalToolProcessSupervisor {
             var environment = ProcessInfo.processInfo.environment
             environment["PATH"] = config.environmentPath
             child.environment = environment
+            // Dispositions were installed before establishing the group, so an
+            // immediate Cancel cannot bypass descendant bookkeeping.
             try child.run()
+            let childGroup = getpgid(child.processIdentifier)
+            if childGroup > 1, childGroup != getpgrp() {
+                try String(childGroup).write(toFile: configurationPath + ".child-pgid", atomically: true, encoding: .utf8)
+            }
 
             let signalQueue = DispatchQueue(label: "com.jacksongb.vaulty.tool-supervisor-signals")
-            let handledSignals = [SIGTERM, SIGINT, SIGHUP]
             let signalSources = handledSignals.map { signalNumber -> DispatchSourceSignal in
                 signal(signalNumber, SIG_IGN)
                 let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: signalQueue)
                 source.setEventHandler {
-                    guard child.isRunning else { return }
-                    let childPID = child.processIdentifier
-                    let childGroup = getpgid(childPID)
-                    if childGroup > 0, childGroup != getpgrp() {
+                    if childGroup > 1, childGroup != getpgrp() {
                         _ = kill(-childGroup, SIGTERM)
-                    } else {
+                    } else if child.isRunning {
                         child.terminate()
                     }
                 }
@@ -374,7 +389,14 @@ enum LocalToolProcessSupervisor {
                 return source
             }
 
+            // Keep ownership alive until the isolated child group has drained,
+            // including descendants that outlive the command's immediate child.
             child.waitUntilExit()
+            if childGroup > 1, childGroup != getpgrp() {
+                while kill(-childGroup, 0) == 0 || errno == EPERM {
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
+            }
             signalSources.forEach { $0.cancel() }
             return child.terminationStatus
         } catch {
@@ -386,6 +408,7 @@ enum LocalToolProcessSupervisor {
 }
 
 final class LocalToolsManager: ObservableObject {
+    let caffeinate = CaffeinateController()
     @Published private(set) var tools: [LocalToolRuntime]
     @Published var isPresentingManager = false
     @Published var isPresentingAddTool = false
@@ -398,6 +421,8 @@ final class LocalToolsManager: ObservableObject {
     private let openURL: (URL) -> Bool
     private let opensWhenReady: Bool
     private var statusTimer: Timer?
+    private let portProbe: (([Int], @escaping ([Int: Bool]) -> Void) -> Void)?
+    private let externalBBStop: (LocalToolDefinition) throws -> Void
 
     init(
         catalog: LocalToolCatalog = LocalToolCatalog(),
@@ -407,8 +432,12 @@ final class LocalToolsManager: ObservableObject {
         logDirectory: URL? = nil,
         startsStatusTimer: Bool = true,
         opensWhenReady: Bool = true,
+        portProbe: (([Int], @escaping ([Int: Bool]) -> Void) -> Void)? = nil,
+        externalBBStop: @escaping (LocalToolDefinition) throws -> Void = { _ = try BBExternalLifecycle.stop(definition: $0) },
         openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
     ) {
+        self.portProbe = portProbe
+        self.externalBBStop = externalBBStop
         self.catalog = catalog
         self.supervisorExecutableURL = supervisorExecutableURL
         self.runDirectory = runDirectory ?? catalog.fileURL.deletingLastPathComponent().appendingPathComponent("ToolRuns", isDirectory: true)
@@ -447,6 +476,7 @@ final class LocalToolsManager: ObservableObject {
 
     func remove(_ runtime: LocalToolRuntime) throws {
         guard !runtime.isOwned,
+              runtime.state != .checking,
               runtime.state != .starting,
               runtime.state != .stopping else {
             throw LocalToolError.invalidDefinition("Stop this Vaulty-owned process before removing the tool.")
@@ -465,15 +495,22 @@ final class LocalToolsManager: ObservableObject {
             return
         }
 
+        guard runtime.supervisorPID == nil else {
+            runtime.errorText = "Stop or Restart the owned service before retrying."
+            return
+        }
+        let generation = beginOperation(runtime)
         runtime.state = .checking
         runtime.statusText = "Checking local ports…"
         runtime.errorText = nil
         probePorts(runtime.definition.expectedPorts) { [weak self, weak runtime] states in
-            guard let self, let runtime else { return }
+            guard let self, let runtime, runtime.generation == generation, runtime.state == .checking else { return }
             let openPorts = states.filter(\.value).map(\.key).sorted()
             if let primary = runtime.definition.primaryPort, states[primary] == true {
                 runtime.state = .runningExternal
-                runtime.statusText = "Running externally"
+                runtime.statusText = BBExternalLifecycle.matches(runtime.definition)
+                    ? "External bb · restart available"
+                    : "External · use its original launcher"
                 self.openPrimaryLink(runtime)
                 return
             }
@@ -481,6 +518,7 @@ final class LocalToolsManager: ObservableObject {
                 self.fail(runtime, LocalToolError.partiallyRunning(openPorts))
                 return
             }
+            runtime.reusedPorts = Set(openPorts)
             do {
                 try self.launch(runtime)
             } catch {
@@ -489,27 +527,137 @@ final class LocalToolsManager: ObservableObject {
         }
     }
 
+    @discardableResult
+    private func beginOperation(_ runtime: LocalToolRuntime) -> UUID {
+        runtime.generation = UUID()
+        runtime.statusGeneration = UUID()
+        runtime.readinessWorkItem?.cancel()
+        runtime.readinessWorkItem = nil
+        return runtime.generation
+    }
+
+    func cancel(_ runtime: LocalToolRuntime) {
+        guard runtime.canCancel else { return }
+        if runtime.supervisorPID != nil {
+            stop(runtime)
+        } else {
+            beginOperation(runtime)
+            runtime.state = .stopped
+            runtime.statusText = "Cancelled"
+            runtime.errorText = nil
+        }
+    }
+
+    func restart(_ runtime: LocalToolRuntime) {
+        if runtime.state == .runningExternal, BBExternalLifecycle.matches(runtime.definition) {
+            stopExternalBB(runtime, restarting: true)
+            return
+        }
+        guard runtime.canControlOwned else {
+            runtime.errorText = "External services must be restarted in their original launcher."
+            return
+        }
+        stop(runtime, restarting: true)
+    }
+
+    /// UI callers must confirm interruption before invoking this external path.
     func stop(_ runtime: LocalToolRuntime) {
-        guard runtime.state == .runningOwned,
-              let pid = runtime.supervisorPID,
-              isVerifiedSupervisor(pid: pid) else {
+        if runtime.state == .runningExternal, BBExternalLifecycle.matches(runtime.definition) {
+            stopExternalBB(runtime, restarting: false)
+            return
+        }
+        stop(runtime, restarting: false)
+    }
+
+    private func stopExternalBB(_ runtime: LocalToolRuntime, restarting: Bool) {
+        guard runtime.state == .runningExternal, BBExternalLifecycle.matches(runtime.definition) else { return }
+        let generation = beginOperation(runtime)
+        runtime.restartPending = restarting
+        runtime.reusedPorts = []
+        runtime.state = .stopping
+        runtime.statusText = restarting ? "Restarting bb…" : "Stopping bb…"
+        runtime.errorText = nil
+        let definition = runtime.definition
+        let stopCommand = externalBBStop
+        DispatchQueue.global(qos: .utility).async { [weak self, weak runtime] in
+            let result = Result { try stopCommand(definition) }
+            DispatchQueue.main.async {
+                guard let self, let runtime, runtime.generation == generation, runtime.state == .stopping else { return }
+                switch result {
+                case .success:
+                    self.verifyExternalBBStopped(runtime, generation: generation, attempt: 0)
+                case let .failure(error):
+                    runtime.restartPending = false
+                    // Retain external recovery controls instead of pretending to own bb.
+                    runtime.state = .runningExternal
+                    runtime.statusText = "External bb · stop failed"
+                    runtime.errorText = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func verifyExternalBBStopped(_ runtime: LocalToolRuntime, generation: UUID, attempt: Int) {
+        guard runtime.generation == generation, runtime.state == .stopping else { return }
+        probePorts(runtime.definition.expectedPorts) { [weak self, weak runtime] states in
+            guard let self, let runtime, runtime.generation == generation, runtime.state == .stopping else { return }
+            if states.values.allSatisfy({ !$0 }) {
+                let restart = runtime.restartPending
+                runtime.restartPending = false
+                runtime.state = .stopped
+                runtime.statusText = "bb stopped"
+                if restart { self.startOrOpen(runtime) }
+                return
+            }
+            guard attempt < 40 else {
+                runtime.restartPending = false
+                runtime.state = .runningExternal
+                runtime.statusText = "External bb · port still open"
+                runtime.errorText = "bb's port did not close after its stop command. No new instance was launched. Retry Stop or check its original launcher."
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak runtime] in
+                guard let self, let runtime else { return }
+                self.verifyExternalBBStopped(runtime, generation: generation, attempt: attempt + 1)
+            }
+        }
+    }
+
+    private func stop(_ runtime: LocalToolRuntime, restarting: Bool) {
+        guard runtime.supervisorPID != nil, runtime.state != .stopping else {
             runtime.errorText = "Vaulty can stop only verified process groups it started."
             return
         }
-        guard getpgid(pid) == pid else {
-            fail(runtime, LocalToolError.stopRefused)
-            return
-        }
-
+        let generation = beginOperation(runtime)
+        runtime.restartPending = restarting
         runtime.state = .stopping
-        runtime.statusText = "Stopping owned process…"
+        runtime.statusText = restarting ? "Restarting · waiting for exit and closed ports…" : "Stopping owned process…"
         runtime.errorText = nil
-        guard kill(-pid, SIGTERM) == 0 else {
-            fail(runtime, LocalToolError.stopRefused)
-            return
-        }
-        scheduleStopVerification(runtime, attempt: 0)
+        requestStop(runtime, generation: generation, attempt: 0)
     }
+
+    private func requestStop(_ runtime: LocalToolRuntime, generation: UUID, attempt: Int) {
+        guard runtime.generation == generation, let pid = runtime.supervisorPID else { return }
+        if isVerifiedSupervisor(pid: pid) {
+            guard kill(-pid, SIGTERM) == 0 else {
+                fail(runtime, LocalToolError.stopRefused)
+                return
+            }
+            scheduleStopVerification(runtime, generation: generation, attempt: 0)
+        } else if ownedGroupsExited(runtime) {
+            scheduleStopVerification(runtime, generation: generation, attempt: 0)
+        } else if attempt < 20 {
+            // Process.run returns before the supervisor establishes its group.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak runtime] in
+                guard let self, let runtime else { return }
+                self.requestStop(runtime, generation: generation, attempt: attempt + 1)
+            }
+        } else {
+            fail(runtime, LocalToolError.stopRefused)
+        }
+    }
+
+    func refreshStatus(_ runtime: LocalToolRuntime) { refreshStatuses(only: runtime.id) }
 
     func openPrimaryLink(_ runtime: LocalToolRuntime) {
         guard let url = runtime.definition.primaryURL else {
@@ -560,30 +708,33 @@ final class LocalToolsManager: ObservableObject {
         }
     }
 
-    func refreshStatuses() {
-        for runtime in tools where runtime.state != .stopping {
+    func refreshStatuses(only id: UUID? = nil) {
+        for runtime in tools where (id == nil || runtime.id == id) && !runtime.canCancel && runtime.state != .stopping {
+            let generation = runtime.generation
+            let statusGeneration = UUID()
+            runtime.statusGeneration = statusGeneration
             probePorts(runtime.definition.expectedPorts) { [weak self, weak runtime] states in
-                guard let self, let runtime else { return }
+                guard let self, let runtime,
+                      runtime.generation == generation, runtime.statusGeneration == statusGeneration,
+                      !runtime.canCancel, runtime.state != .stopping else { return }
                 let primaryOpen = runtime.definition.primaryPort.map { states[$0] == true }
                     ?? states.values.contains(true)
-                let ownedAlive = runtime.supervisorPID.map { self.isVerifiedSupervisor(pid: $0) } == true
-                if ownedAlive {
-                    runtime.state = primaryOpen ? .runningOwned : .starting
-                    runtime.statusText = primaryOpen ? "Running · started by Vaulty" : "Starting local service…"
-                } else if primaryOpen {
-                    if runtime.supervisorPID != nil {
-                        self.removeRunRecord(for: runtime.id)
-                        runtime.supervisorPID = nil
-                        runtime.supervisorProcess = nil
+                if runtime.supervisorPID != nil {
+                    if self.ownedGroupsExited(runtime) {
+                        self.clearOwnership(runtime)
+                    } else {
+                        guard runtime.state != .failed else { return }
+                        runtime.state = primaryOpen ? .runningOwned : .failed
+                        runtime.statusText = primaryOpen ? "Running · started by Vaulty" : "Owned service not ready · Stop or Restart"
+                        return
                     }
+                }
+                if primaryOpen {
                     runtime.state = .runningExternal
-                    runtime.statusText = "Running externally"
+                    runtime.statusText = BBExternalLifecycle.matches(runtime.definition)
+                    ? "External bb · restart available"
+                    : "External · use its original launcher"
                 } else if runtime.state != .failed {
-                    if runtime.supervisorPID != nil {
-                        self.removeRunRecord(for: runtime.id)
-                        runtime.supervisorPID = nil
-                        runtime.supervisorProcess = nil
-                    }
                     runtime.state = .stopped
                     runtime.statusText = "Stopped"
                 }
@@ -598,6 +749,8 @@ final class LocalToolsManager: ObservableObject {
         let definition = try runtime.definition.validated()
         try FileManager.default.createDirectory(at: runDirectory, withIntermediateDirectories: true)
         let configURL = runDirectory.appendingPathComponent("\(definition.id.uuidString).json")
+        try? FileManager.default.removeItem(atPath: configURL.path + ".child-pgid")
+        let generation = runtime.generation
         let logURL = logDirectory
             .appendingPathComponent("tool-\(definition.id.uuidString).log")
         let config = LocalToolSupervisorConfiguration(
@@ -619,17 +772,12 @@ final class LocalToolsManager: ObservableObject {
         process.terminationHandler = { [weak self, weak runtime] process in
             guard let self, let runtime else { return }
             DispatchQueue.main.async {
-                guard runtime.supervisorPID == process.processIdentifier else { return }
-                self.removeRunRecord(for: runtime.id)
-                runtime.supervisorProcess = nil
-                runtime.supervisorPID = nil
-                runtime.logHandle = nil
+                guard runtime.supervisorPID == process.processIdentifier,
+                      runtime.generation == generation, runtime.state != .stopping else { return }
                 runtime.readinessWorkItem?.cancel()
-                runtime.readinessWorkItem = nil
-                if runtime.state != .stopping {
-                    runtime.state = process.terminationStatus == 0 ? .stopped : .failed
-                    runtime.statusText = process.terminationStatus == 0 ? "Stopped" : "Exited · check the Vaulty tool log"
-                }
+                if self.ownedGroupsExited(runtime) { self.clearOwnership(runtime) }
+                runtime.state = process.terminationStatus == 0 ? .stopped : .failed
+                runtime.statusText = process.terminationStatus == 0 ? "Stopped" : "Exited · check the Vaulty tool log"
             }
         }
 
@@ -639,31 +787,35 @@ final class LocalToolsManager: ObservableObject {
         try process.run()
         runtime.supervisorPID = process.processIdentifier
         do {
+            let identity = Self.processIdentity(process.processIdentifier)
             try writeRunRecord(
                 LocalToolRunRecord(
                     toolID: definition.id,
                     supervisorPID: process.processIdentifier,
                     supervisorExecutablePath: supervisorExecutableURL.path,
                     configurationPath: configURL.path,
-                    startedAt: Date()
+                    startedAt: Date(),
+                    reusedPorts: Array(runtime.reusedPorts),
+                    startSeconds: identity?.pbi_start_tvsec,
+                    startMicroseconds: identity?.pbi_start_tvusec
                 )
             )
         } catch {
             process.terminate()
-            runtime.supervisorPID = nil
+            // Retain in-memory ownership even if persistence failed.
             throw error
         }
-        waitForReadiness(runtime, attempt: 0)
+        waitForReadiness(runtime, generation: generation, attempt: 0)
     }
 
-    private func waitForReadiness(_ runtime: LocalToolRuntime, attempt: Int) {
-        guard runtime.state == .starting else { return }
+    private func waitForReadiness(_ runtime: LocalToolRuntime, generation: UUID, attempt: Int) {
+        guard runtime.generation == generation, runtime.state == .starting else { return }
         let ports = runtime.definition.expectedPorts
         probePorts(ports) { [weak self, weak runtime] states in
-            guard let self, let runtime, runtime.state == .starting else { return }
+            guard let self, let runtime, runtime.generation == generation, runtime.state == .starting else { return }
             let ready = runtime.definition.primaryPort.map { states[$0] == true }
                 ?? states.values.contains(true)
-            if ready {
+            if ready, runtime.supervisorPID.map({ self.isVerifiedSupervisor(pid: $0) }) == true {
                 runtime.state = .runningOwned
                 runtime.statusText = "Running · started by Vaulty"
                 if self.opensWhenReady {
@@ -671,7 +823,7 @@ final class LocalToolsManager: ObservableObject {
                 }
                 return
             }
-            guard runtime.supervisorProcess?.isRunning == true else {
+            guard runtime.supervisorPID.map({ self.isVerifiedSupervisor(pid: $0) || runtime.supervisorProcess?.isRunning == true }) == true else {
                 self.fail(runtime, LocalToolError.launchFailed("The tool exited before its local link became ready."))
                 return
             }
@@ -681,45 +833,66 @@ final class LocalToolsManager: ObservableObject {
             }
             let work = DispatchWorkItem { [weak self, weak runtime] in
                 guard let self, let runtime else { return }
-                self.waitForReadiness(runtime, attempt: attempt + 1)
+                self.waitForReadiness(runtime, generation: generation, attempt: attempt + 1)
             }
             runtime.readinessWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
         }
     }
 
-    private func scheduleStopVerification(_ runtime: LocalToolRuntime, attempt: Int) {
+    private func ownedGroupsExited(_ runtime: LocalToolRuntime) -> Bool {
+        guard let pid = runtime.supervisorPID else { return true }
+        func absent(_ target: pid_t) -> Bool {
+            kill(target, 0) == -1 && errno == ESRCH
+        }
+        guard absent(pid), absent(-pid), runtime.supervisorProcess?.isRunning != true else { return false }
+        let path = runDirectory.appendingPathComponent("\(runtime.id.uuidString).json.child-pgid").path
+        if let text = try? String(contentsOfFile: path), let childGroup = Int32(text), childGroup > 1 {
+            return absent(-childGroup)
+        }
+        return true
+    }
+
+    private func clearOwnership(_ runtime: LocalToolRuntime) {
+        removeRunRecord(for: runtime.id)
+        runtime.supervisorProcess = nil
+        runtime.supervisorPID = nil
+        runtime.logHandle = nil
+    }
+
+    private func scheduleStopVerification(_ runtime: LocalToolRuntime, generation: UUID, attempt: Int) {
+        guard runtime.generation == generation, runtime.state == .stopping else { return }
         probePorts(runtime.definition.expectedPorts) { [weak self, weak runtime] states in
-            guard let self, let runtime else { return }
-            let primaryOpen = runtime.definition.primaryPort.map { states[$0] == true }
-                ?? states.values.contains(true)
-            if !primaryOpen {
-                self.removeRunRecord(for: runtime.id)
-                runtime.supervisorProcess = nil
-                runtime.supervisorPID = nil
+            guard let self, let runtime, runtime.generation == generation, runtime.state == .stopping else { return }
+            let portsClosed = states.allSatisfy { runtime.reusedPorts.contains($0.key) || !$0.value }
+            if self.ownedGroupsExited(runtime), portsClosed {
+                self.clearOwnership(runtime)
                 runtime.state = .stopped
                 runtime.statusText = "Stopped by Vaulty"
+                let restart = runtime.restartPending
+                runtime.restartPending = false
+                if restart { self.startOrOpen(runtime) }
                 return
             }
-            guard attempt < 20 else {
-                runtime.state = .failed
-                runtime.statusText = "Stop requested"
-                runtime.errorText = "The local port is still open. Vaulty did not force-kill it."
+            // Retry a graceful signal: the first Cancel may precede signal-source
+            // installation. Never escalate or signal an unverified supervisor.
+            if let pid = runtime.supervisorPID, self.isVerifiedSupervisor(pid: pid) {
+                _ = kill(-pid, SIGTERM)
+            }
+            guard attempt < 40 else {
+                self.fail(runtime, LocalToolError.launchFailed("Exit or port closure could not be verified. Ownership retained; no force-kill or relaunch. Try Stop or Restart."))
                 return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                self.scheduleStopVerification(runtime, attempt: attempt + 1)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak runtime] in
+                guard let self, let runtime else { return }
+                self.scheduleStopVerification(runtime, generation: generation, attempt: attempt + 1)
             }
         }
     }
 
     private func fail(_ runtime: LocalToolRuntime, _ error: Error) {
-        if let process = runtime.supervisorProcess, process.isRunning {
-            let pid = process.processIdentifier
-            if getpgid(pid) == pid {
-                _ = kill(-pid, SIGTERM)
-            }
-        }
+        beginOperation(runtime)
+        runtime.restartPending = false
         runtime.state = .failed
         runtime.statusText = "Needs attention"
         runtime.errorText = error.localizedDescription
@@ -729,14 +902,22 @@ final class LocalToolsManager: ObservableObject {
         for runtime in tools {
             guard let record = readRunRecord(for: runtime.id) else { continue }
             guard record.toolID == runtime.id,
-                  record.configurationPath.hasPrefix(runDirectory.path + "/"),
-                  isVerifiedSupervisor(pid: record.supervisorPID) else {
-                removeRunRecord(for: runtime.id)
-                continue
+                  record.configurationPath == runDirectory.appendingPathComponent("\(runtime.id.uuidString).json").path else {
+                continue // Invalid records are preserved for manual recovery, never signalled.
             }
             runtime.supervisorPID = record.supervisorPID
-            runtime.state = .starting
-            runtime.statusText = "Reconnecting to Vaulty-owned process…"
+            runtime.reusedPorts = Set(record.reusedPorts ?? [])
+            if ownedGroupsExited(runtime) {
+                clearOwnership(runtime)
+            } else if isVerifiedSupervisor(pid: record.supervisorPID) {
+                runtime.state = .starting
+                runtime.statusText = "Reconnecting to Vaulty-owned process…"
+                waitForReadiness(runtime, generation: runtime.generation, attempt: 0)
+            } else {
+                runtime.state = .failed
+                runtime.statusText = "Ownership retained · process exit not verified"
+                runtime.errorText = "Vaulty will not signal an unverified process. Check its original launcher or log."
+            }
         }
     }
 
@@ -764,21 +945,18 @@ final class LocalToolsManager: ObservableObject {
         guard pid > 1, getpgid(pid) == pid else { return false }
         guard kill(pid, 0) == 0 || errno == EPERM else { return false }
 
-        var expectedPaths = Set<String>()
-        if let supervisorExecutableURL {
-            expectedPaths.insert(supervisorExecutableURL.standardizedFileURL.resolvingSymlinksInPath().path)
+        guard let record = tools.compactMap({ readRunRecord(for: $0.id) }).first(where: {
+            $0.supervisorPID == pid && $0.configurationPath == runDirectory.appendingPathComponent("\($0.toolID.uuidString).json").path
+        }) else { return false }
+        if let seconds = record.startSeconds, let micros = record.startMicroseconds {
+            guard let identity = Self.processIdentity(pid), identity.pbi_start_tvsec == seconds,
+                  identity.pbi_start_tvusec == micros else { return false }
         }
-        for runtime in tools {
-            if let record = readRunRecord(for: runtime.id), record.supervisorPID == pid {
-                expectedPaths.insert(
-                    URL(fileURLWithPath: record.supervisorExecutablePath)
-                        .standardizedFileURL
-                        .resolvingSymlinksInPath()
-                        .path
-                )
-            }
-        }
-        guard !expectedPaths.isEmpty else { return false }
+        // An executable match alone could identify another Vaulty window or a
+        // recycled PID. Verify this exact tool-supervisor invocation as well.
+        guard Self.processArguments(pid).suffix(2) == ["--tool-supervisor", record.configurationPath] else { return false }
+        let expectedPath = URL(fileURLWithPath: record.supervisorExecutablePath)
+            .standardizedFileURL.resolvingSymlinksInPath().path
 
         var buffer = [CChar](repeating: 0, count: 4_096)
         let count = proc_pidpath(pid, &buffer, UInt32(buffer.count))
@@ -787,7 +965,36 @@ final class LocalToolsManager: ObservableObject {
             .standardizedFileURL
             .resolvingSymlinksInPath()
             .path
-        return expectedPaths.contains(actualPath)
+        return expectedPath == actualPath
+    }
+
+    private static func processIdentity(_ pid: pid_t) -> proc_bsdinfo? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        return info
+    }
+
+    private static func processArguments(_ pid: pid_t) -> [String] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [] }
+        var bytes = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &bytes, &size, nil, 0) == 0 else { return [] }
+        let argc = bytes.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) }
+        guard argc > 0 else { return [] }
+        var offset = MemoryLayout<Int32>.size
+        while offset < size && bytes[offset] != 0 { offset += 1 } // executable path
+        while offset < size && bytes[offset] == 0 { offset += 1 } // padding
+        var arguments: [String] = []
+        for _ in 0..<argc {
+            let start = offset
+            while offset < size && bytes[offset] != 0 { offset += 1 }
+            guard offset < size else { return [] }
+            arguments.append(String(decoding: bytes[start..<offset], as: UTF8.self))
+            offset += 1
+        }
+        return arguments
     }
 
     private func persist() throws {
@@ -798,6 +1005,7 @@ final class LocalToolsManager: ObservableObject {
         _ ports: [Int],
         completion: @escaping ([Int: Bool]) -> Void
     ) {
+        if let portProbe { portProbe(ports, completion); return }
         guard !ports.isEmpty else {
             completion([:])
             return
