@@ -86,3 +86,4 @@ if ! grep -q "# preserved entry" "$HOSTS_FILE"; then
 fi
 
 printf 'integration test passed: independent YouTube and short-form blockers, idempotency, preservation, and unblock verified\n'
+python3 scripts/cli-refactor-test.py

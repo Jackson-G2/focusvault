@@ -81,5 +81,6 @@ enum LocalToolsExternalSelfTest {
                   "failed stop lost external recovery state")
         try check(failed.ownedPID == nil, "external stop claimed ownership")
         print("PASS: external bb allowlist, verified port-closure ordering, restart handoff, and stop failure recovery (mock CLI; no live bb touched)")
+        try LocalToolRefactorSelfTest.run(in: directory)
     }
 }

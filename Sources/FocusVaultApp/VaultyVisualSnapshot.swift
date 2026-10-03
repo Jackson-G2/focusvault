@@ -127,6 +127,11 @@ enum VaultyVisualSnapshot {
                 requestDirectoryURL: directory.appendingPathComponent("requests", isDirectory: true),
                 responseDirectoryURL: directory.appendingPathComponent("responses", isDirectory: true)
             )
+            let layoutSuite = "VaultyDashboardPreview.\(UUID().uuidString)"
+            guard let layoutDefaults = UserDefaults(suiteName: layoutSuite) else {
+                throw LocalToolError.launchFailed("Could not create isolated dashboard preview defaults.")
+            }
+            defer { layoutDefaults.removePersistentDomain(forName: layoutSuite) }
             let model = FocusVaultAppModel(
                 hostsFileURL: hosts,
                 privilegedAction: { _, completion in completion(.success("")) },
@@ -140,15 +145,12 @@ enum VaultyVisualSnapshot {
                 },
                 guardInstalled: { true },
                 adminUnlock: { completion in completion(.success(())) },
-                guardStorage: guardStorage
+                guardStorage: guardStorage,
+                defaults: layoutDefaults,
+                startsStatusTimer: false
             )
             let tracker = ProductivityTracker(storeURL: directory.appendingPathComponent("productivity.json"))
-            let learningGuide = VideoResearchModel()
-            let layoutSuite = "VaultyDashboardPreview.\(UUID().uuidString)"
-            guard let layoutDefaults = UserDefaults(suiteName: layoutSuite) else {
-                throw LocalToolError.launchFailed("Could not create isolated dashboard preview defaults.")
-            }
-            defer { layoutDefaults.removePersistentDomain(forName: layoutSuite) }
+            let learningGuide = VideoResearchModel(resultURL: directory.appendingPathComponent("recommendations.json"))
             let dashboardLayout = DashboardLayoutModel(
                 defaults: layoutDefaults,
                 key: "preview-canvas",
@@ -171,11 +173,12 @@ enum VaultyVisualSnapshot {
                 opensWhenReady: false,
                 openURL: { _ in true }
             )
-            let root = FocusVaultDashboard(dashboardLayout: dashboardLayout)
+            let root = FocusVaultDashboard(dashboardLayout: dashboardLayout, startsServices: false)
                 .environmentObject(model)
                 .environmentObject(tracker)
                 .environmentObject(learningGuide)
                 .environmentObject(tools)
+
             return render(root, width: 1020, height: 1900, to: outputPath)
         } catch {
             fputs("Dashboard preview failed: \(error.localizedDescription)\n", stderr)
@@ -210,6 +213,7 @@ enum VaultyVisualSnapshot {
                     .padding(28)
             }
             .preferredColorScheme(.dark)
+            .environment(\.vaultyMaterialSnapshot, true)
             .frame(width: 342, height: 700)
 
             let hosting = NSHostingView(rootView: root)
@@ -239,6 +243,7 @@ enum VaultyVisualSnapshot {
     ) -> Int32 {
         let root = content
             .preferredColorScheme(.dark)
+            .environment(\.vaultyMaterialSnapshot, true)
             .frame(width: width, height: height)
         let hosting = NSHostingView(rootView: root)
         hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)

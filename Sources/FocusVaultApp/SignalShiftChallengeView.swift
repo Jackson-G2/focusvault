@@ -360,9 +360,10 @@ struct SignalShiftChallengeView: View {
             statusText = "Rooms clear. Confirm to unlock YouTube."
         case .lockedOut:
             phase = .lockedOut
-            statusText = "Three lives used. Enter your password again to retry."
+            statusText = "Three lives used. Choose an unlock task again to retry."
             previewTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 800_000_000)
+                guard !Task.isCancelled else { return }
                 onLockedOut()
             }
         }

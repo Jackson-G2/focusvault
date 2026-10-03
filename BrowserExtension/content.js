@@ -10,6 +10,10 @@
   let retryTimer = null;
   let sessionExpiryTimer = null;
   let sessionPollTimer = null;
+  let linksScanned = false;
+  let linkScanTimer = null;
+  const pendingLinkRoots = new Set();
+  const originalLabels = new WeakMap();
 
   function showGuard(message) {
     let guard = document.getElementById(GUARD_ID);
@@ -74,18 +78,59 @@
     ) || anchor;
   }
 
-  function scanShortFormLinks() {
-    if (typeof document.querySelectorAll !== "function") return;
-    for (const anchor of document.querySelectorAll("a[href]")) {
+  function scanShortFormLinks(root = document) {
+    if (typeof root.querySelectorAll !== "function") return;
+    const anchors = [...root.querySelectorAll("a[href]")];
+    if (root.matches?.("a[href]")) anchors.unshift(root);
+    const mayClear = new Set();
+    if (originalLabels.has(root)) mayClear.add(root);
+    for (const anchor of anchors) {
       const decision = policy.decisionForShortFormUrl(
         anchor.href || anchor.getAttribute("href")
       );
-      if (decision.state !== "block") continue;
-
       const container = shortFormLinkContainer(anchor);
-      container.dataset.vaultyShortFormBlocked = "true";
-      container.setAttribute("aria-label", `${decision.platformName || "Short-form content"} blocked by Vaulty`);
+      if (decision.state !== "block") {
+        if (originalLabels.has(container)) mayClear.add(container);
+        continue;
+      }
+      if (container.dataset.vaultyShortFormBlocked !== "true") {
+        originalLabels.set(container, container.getAttribute("aria-label"));
+        container.dataset.vaultyShortFormBlocked = "true";
+        container.setAttribute("aria-label", `${decision.platformName || "Short-form content"} blocked by Vaulty`);
+      }
     }
+    // Virtualized feeds reuse nodes and change hrefs. Remove only our marker,
+    // after checking no other blocked link remains in the same container.
+    for (const container of mayClear) {
+      const links = [...container.querySelectorAll("a[href]")];
+      if (container.matches?.("a[href]")) links.unshift(container);
+      if (links.some(link => policy.decisionForShortFormUrl(link.href || link.getAttribute("href")).state === "block")) continue;
+      delete container.dataset.vaultyShortFormBlocked;
+      const previous = originalLabels.get(container);
+      if (previous === null) container.removeAttribute("aria-label");
+      else container.setAttribute("aria-label", previous);
+      originalLabels.delete(container);
+    }
+  }
+
+  function flushLinkRoots() {
+    clearTimeout(linkScanTimer);
+    linkScanTimer = null;
+    const roots = [...pendingLinkRoots];
+    pendingLinkRoots.clear();
+    for (const root of roots) {
+      if (!roots.some((other) => other !== root && other.contains?.(root))) {
+        scanShortFormLinks(root);
+      }
+    }
+  }
+
+  function queueLinkRoot(root) {
+    if (!root || root.nodeType !== 1 || root.closest?.(`#${GUARD_ID}`)) return;
+    pendingLinkRoots.add(root);
+    // Bound retained nodes even during very large mutation bursts.
+    if (pendingLinkRoots.size >= 200) flushLinkRoots();
+    else if (!linkScanTimer) linkScanTimer = setTimeout(flushLinkRoots, 50);
   }
 
   function interceptShortFormNavigation(event) {
@@ -128,7 +173,6 @@
 
     const retry = () => {
       if (token !== evaluationToken) return;
-      scanShortFormLinks();
       const decision = policy.decisionForDocument(
         location.href,
         document,
@@ -174,7 +218,10 @@
       finish(shortFormDecision, token);
       return;
     }
-    scanShortFormLinks();
+    if (!linksScanned) {
+      scanShortFormLinks();
+      linksScanned = true;
+    }
 
     if (!isYouTubePage(location.href)) {
       finish({ state: "outside" }, token);
@@ -239,9 +286,22 @@
   window.addEventListener("hashchange", evaluate);
 
   if (typeof MutationObserver !== "undefined") {
-    const observer = new MutationObserver(() => scanShortFormLinks());
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "attributes") queueLinkRoot(record.target);
+        else {
+          for (const node of record.addedNodes || []) queueLinkRoot(node);
+          if (record.removedNodes?.length) {
+            const marked = record.target?.closest?.("[data-vaulty-short-form-blocked='true']");
+            if (marked) queueLinkRoot(marked);
+          }
+        }
+      }
+    });
     const root = document.documentElement || document;
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ["href"]
+    });
   }
 
   loadSettings();

@@ -29,9 +29,9 @@
     document.title = "Vaulty — YouTube locked";
     eyebrow.textContent = "VAULTY · YOUTUBE LOCKED";
     title.innerHTML = "YouTube is locked.<br>Choose deliberately.";
-    copy.textContent = "Unlocking requires your Mac administrator password, then three Signal Shift rooms. A successful session lasts exactly 45 minutes.";
+    copy.textContent = "Choose Grid Shot, Typing Sprint, or optional Signal Shift in Vaulty. Win the task, then approve a 45-minute unlock with your Mac administrator password.";
     manage.textContent = "Unlock in Vaulty";
-    hint.textContent = "Locking again never asks for a password. Three missed signals means entering your password again.";
+    hint.textContent = "Locking again never asks for a password. Choose an unlock task; administrator approval comes after you win.";
     pollSession();
   }
 

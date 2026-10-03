@@ -53,6 +53,7 @@ enum BBExternalLifecycle {
             && definition.expectedPorts == [port]
             && definition.primaryPort == port
             && definition.executablePath == "/usr/bin/env"
+            && definition.workingDirectory == FileManager.default.homeDirectoryForCurrentUser.path
             && definition.arguments == defaultArguments
             && definition.primaryURL.map(isDefaultLoopbackURL) == true
     }
@@ -80,49 +81,30 @@ enum BBExternalLifecycle {
             FileManager.default.isExecutableFile(atPath: $0 + "/npx")
         }) else { throw Failure.cliUnavailable }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["npx", "--no-install", "bb-app", "stop", "--data-dir", dataDirectory.path]
-        process.currentDirectoryURL = home
-        process.environment = [
+        let environment = [
             "HOME": home.path, "PATH": pathEntries.joined(separator: ":"),
             "CI": "1", "NO_COLOR": "1", "TERM": "dumb",
             "npm_config_offline": "true", "npm_config_yes": "false",
             "npm_config_ignore_scripts": "true", "npm_config_audit": "false",
             "npm_config_fund": "false", "npm_config_update_notifier": "false"
         ]
-        process.standardInput = FileHandle.nullDevice
-        let pipe = Pipe()
-        let output = BoundedOutput()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if !data.isEmpty { output.append(data) }
-        }
-        defer {
-            pipe.fileHandleForReading.readabilityHandler = nil
-            try? pipe.fileHandleForReading.close()
-            try? pipe.fileHandleForWriting.close()
-        }
-        let completion = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in completion.signal() }
+        let output: LocalToolCommandRunner.Output
         do {
-            try process.run()
+            output = try LocalToolCommandRunner.run(
+                executable: "/usr/bin/env",
+                arguments: ["npx", "--no-install", "bb-app", "stop", "--data-dir", dataDirectory.path],
+                directory: home.path, environment: environment
+            )
         } catch {
             throw Failure.launchFailed
         }
-        // Parent must not hold the writer open; otherwise EOF cannot be delivered.
-        try? pipe.fileHandleForWriting.close()
-        guard completion.wait(timeout: .now() + .seconds(15)) == .success else {
-            // Terminate ONLY our newly created CLI wrapper, never a runtime PID,
-            // process group, port owner, or the external service. No blocking wait
-            // or escalation: bb itself may already be gracefully shutting down.
-            if process.isRunning { process.terminate() }
+        guard !output.timedOut else {
+            // The runner signals only its CLI wrapper, never bb's runtime PID,
+            // process group or port owner. bb may already be stopping gracefully.
             throw Failure.timedOut(output.text)
         }
-        guard process.terminationReason == .exit, process.terminationStatus == 0 else {
-            throw Failure.stopFailed(process.terminationStatus, output.text)
+        guard output.exitedNormally, output.status == 0 else {
+            throw Failure.stopFailed(output.status ?? -1, output.text)
         }
         return output.text
     }
@@ -149,7 +131,7 @@ enum BBExternalLifecycle {
         let version: String
     }
 
-    private static func validateRuntime(in directory: URL) throws {
+    static func validateRuntime(in directory: URL) throws {
         let file = directory.appendingPathComponent("bb-app-runtime.json")
         let record: RuntimeRecord
         do {
@@ -178,23 +160,4 @@ enum BBExternalLifecycle {
         // record and verifies the recorded process really is a bb launcher.
     }
 
-    private final class BoundedOutput: @unchecked Sendable {
-        private let lock = NSLock()
-        private var bytes = Data()
-        private let limit = 16_384
-
-        func append(_ data: Data) {
-            lock.lock()
-            defer { lock.unlock() }
-            bytes.append(data.suffix(limit))
-            if bytes.count > limit { bytes.removeFirst(bytes.count - limit) }
-        }
-
-        var text: String {
-            lock.lock()
-            defer { lock.unlock() }
-            return String(decoding: bytes, as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-    }
 }

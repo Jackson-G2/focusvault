@@ -8,11 +8,18 @@ final class CaffeinateController: ObservableObject {
     @Published private(set) var errorText: String?
     private var process: Process?
     private let defaults: UserDefaults
+    private let makeProcess: () -> Process
     private var hasRestored = false
     static let preferenceKey = "Vaulty.stayAwake.enabled"
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, makeProcess: @escaping () -> Process = {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
+        child.arguments = CaffeinateController.arguments
+        return child
+    }) {
         self.defaults = defaults
+        self.makeProcess = makeProcess
     }
 
     func restoreEnabledState() {
@@ -38,9 +45,7 @@ final class CaffeinateController: ObservableObject {
 
     private func start() {
         guard !isStopping, process?.isRunning != true else { return }
-        let child = Process()
-        child.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
-        child.arguments = Self.arguments
+        let child = makeProcess()
         child.standardInput = FileHandle.nullDevice
         child.standardOutput = FileHandle.nullDevice
         child.standardError = FileHandle.nullDevice

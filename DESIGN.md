@@ -32,7 +32,7 @@ Tideglass is a deep blue-green / sea-glass system with a warm apricot signal. It
 | `coral` | `#F4846A` | Errors and irreversible-feeling warnings |
 | `line` | `#B9E1D31F` | Quiet borders |
 
-The background uses slow, barely perceptible sea-glass and apricot light. It must never compete with the focus action. Purple is not used in the product palette.
+The background uses static, soft sea-glass and apricot light. It must never compete with the focus action or schedule a perpetual idle display loop. Meaningful active-clock, completion, game and arrangement motion stays local to those components and respects Reduce Motion. Purple is not used in the product palette.
 
 ## Vaulty icon and mascot
 
@@ -68,12 +68,12 @@ The dashboard is a single calm workspace, not a settings catalogue:
 
 ### 0. Timed YouTube gate + chosen unlock task — selected
 
-After one administrator-approved setup, `Lock now` is immediate and password-free. Unlocking requires fresh macOS administrator authorization and then presents a fixed-size three-card task hub. The user chooses Grid Shot, Typing Sprint, or optional Signal Shift. Winning does not dismiss the stable sheet or mutate system state; it reveals an explicit `Unlock YouTube` button. That button sends the one-use authorization to the guard, remains disabled while submitting, and closes the sheet only after Vaulty independently verifies an active 45-minute lease and an unblocked hosts file. A rejected or false-success response stays visible with a close-and-reauthenticate path.
+After one administrator-approved setup, `Lock now` is immediate and password-free. Unlocking presents a fixed-size three-card task hub. The user chooses Grid Shot, Typing Sprint, or optional Signal Shift. Winning does not dismiss the stable sheet or mutate system state; it reveals an explicit `Unlock YouTube` button. That button requests fresh administrator approval, remains disabled while submitting, and closes the sheet only after Vaulty independently verifies an active 45-minute lease and an unblocked hosts file. A rejected or false-success response stays visible with a close-and-reauthenticate path.
 
 The task hub contains three bounded tasks:
 
 - **Grid Shot:** three balls continuously refill on a 6×6 grid; ten seconds, +1 per hit, −1 per miss, hard target 30.
-- **Typing Sprint:** reproduce one exact 85–89-character focus phrase within 24 seconds, effectively requiring at least 42 WPM with corrections allowed.
+- **Typing Sprint:** reproduce one exact finite focus phrase, with inline per-character feedback. Timing counts up from the first key; WPM is observational, not a gate. Exact completion succeeds immediately, with no time or speed cutoff.
 
 - **Signal Shift:** optional spatial-memory path with a connected three-cell no-penalty practice room followed by progressive rooms; it is never required for access.
 

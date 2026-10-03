@@ -139,6 +139,7 @@ def summarize(
     payment_intents = {order["payment_intent"] for order in orders if order["payment_intent"]}
     successful_refunds = []
     seen_refunds = set()
+    refunded_cents = 0
     for refund in refunds:
         refund_id = refund.get("id")
         if not refund_id or refund_id in seen_refunds:
@@ -148,6 +149,7 @@ def summarize(
         if refund.get("payment_intent") not in payment_intents:
             continue
         seen_refunds.add(refund_id)
+        refunded_cents += int(refund.get("amount") or 0)
         successful_refunds.append(
             {
                 "refund_id": refund_id,
@@ -159,7 +161,6 @@ def summarize(
     successful_refunds.sort(key=lambda item: (item["created"], item["refund_id"]))
 
     gross_cents = sum(int(session.get("amount_total") or 0) for session in matched.values())
-    refunded_cents = sum(int(refund.get("amount") or 0) for refund in refunds if refund.get("id") in seen_refunds)
     return {
         "status": "read-only",
         "product": product_slug,

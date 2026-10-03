@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import VaultyCore
 
-private enum VaultyGuardInstallerError: Error, LocalizedError {
+enum VaultyGuardInstallerError: Error, LocalizedError {
     case rootRequired
     case invalidHomeDirectory
     case helperSourceMissing
@@ -23,8 +23,6 @@ private enum VaultyGuardInstallerError: Error, LocalizedError {
 }
 
 enum VaultyGuardInstaller {
-    static let extensionID = "apgojdoelgpjfpmiohffnbkfcbjhjhob"
-
     static func install(userHome: URL, uid: uid_t, gid: gid_t) throws {
         guard geteuid() == 0 else { throw VaultyGuardInstallerError.rootRequired }
         let home = userHome.standardizedFileURL.resolvingSymlinksInPath()
@@ -88,107 +86,8 @@ enum VaultyGuardInstaller {
         try? FileManager.default.removeItem(atPath: YouTubeGuardPaths.supportDirectory)
     }
 
-    static func launchDaemonPropertyListData() throws -> Data {
-        let propertyList: [String: Any] = [
-            "Label": YouTubeGuardPaths.launchDaemonLabel,
-            "ProgramArguments": [
-                YouTubeGuardPaths.helperPath,
-                "internal-guard-daemon"
-            ],
-            "RunAtLoad": true,
-            "KeepAlive": true,
-            "ProcessType": "Background",
-            "ThrottleInterval": 2,
-            "StandardOutPath": "/dev/null",
-            "StandardErrorPath": "/dev/null"
-        ]
-        return try PropertyListSerialization.data(
-            fromPropertyList: propertyList,
-            format: .xml,
-            options: 0
-        )
-    }
-
-    static func authorizationRightPropertyListData() throws -> Data {
-        let propertyList: [String: Any] = [
-            "class": "user",
-            "group": "admin",
-            "shared": false,
-            "timeout": 0,
-            "tries": 3,
-            "comment": "Authenticate before Vaulty opens YouTube for a timed session."
-        ]
-        return try PropertyListSerialization.data(
-            fromPropertyList: propertyList,
-            format: .xml,
-            options: 0
-        )
-    }
-
-    static func nativeHostManifestData() throws -> Data {
-        let manifest: [String: Any] = [
-            "name": YouTubeGuardPaths.nativeHostName,
-            "description": "Read-only Vaulty YouTube lock status bridge",
-            "path": YouTubeGuardPaths.nativeHostPath,
-            "type": "stdio",
-            "allowed_origins": ["chrome-extension://\(extensionID)/"]
-        ]
-        return try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
-    }
-
-    static func verifyRenderedConfiguration() throws {
-        let daemon = try PropertyListSerialization.propertyList(
-            from: launchDaemonPropertyListData(),
-            options: [],
-            format: nil
-        ) as? [String: Any]
-        guard daemon?["Label"] as? String == YouTubeGuardPaths.launchDaemonLabel,
-              (daemon?["ProgramArguments"] as? [String]) == [
-                YouTubeGuardPaths.helperPath,
-                "internal-guard-daemon"
-              ],
-              daemon?["RunAtLoad"] as? Bool == true,
-              daemon?["KeepAlive"] as? Bool == true else {
-            throw VaultyGuardInstallerError.commandFailed("The rendered LaunchDaemon configuration is invalid.")
-        }
-
-        let right = try PropertyListSerialization.propertyList(
-            from: authorizationRightPropertyListData(),
-            options: [],
-            format: nil
-        ) as? [String: Any]
-        guard right?["group"] as? String == "admin",
-              right?["shared"] as? Bool == false,
-              right?["timeout"] as? Int == 0 else {
-            throw VaultyGuardInstallerError.commandFailed("The rendered unlock authorization right is invalid.")
-        }
-
-        let native = try JSONSerialization.jsonObject(with: nativeHostManifestData()) as? [String: Any]
-        guard native?["name"] as? String == YouTubeGuardPaths.nativeHostName,
-              native?["path"] as? String == YouTubeGuardPaths.nativeHostPath,
-              (native?["allowed_origins"] as? [String]) == [
-                "chrome-extension://\(extensionID)/"
-              ] else {
-            throw VaultyGuardInstallerError.commandFailed("The rendered native-messaging manifest is invalid.")
-        }
-    }
-
     private static func installExecutable(from source: URL, to destination: URL) throws {
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(
-            at: destination.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let temporary = destination.deletingLastPathComponent()
-            .appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
-        try? fileManager.removeItem(at: temporary)
-        try fileManager.copyItem(at: source, to: temporary)
-        _ = chmod(temporary.path, 0o755)
-        _ = chown(temporary.path, 0, 0)
-        if fileManager.fileExists(atPath: destination.path) {
-            try fileManager.removeItem(at: destination)
-        }
-        try fileManager.moveItem(at: temporary, to: destination)
+        try CLIAtomicFileWriter.write(try Data(contentsOf: source), to: destination, mode: 0o755, owner: 0, group: 0)
     }
 
     private static func prepareGuardDirectories() throws {
@@ -216,7 +115,7 @@ enum VaultyGuardInstaller {
     }
 
     private static func installAuthorizationRight() throws {
-        let data = try authorizationRightPropertyListData()
+        let data = try VaultyGuardConfiguration.authorizationRightPropertyListData()
         _ = try run(
             executable: "/usr/bin/security",
             arguments: ["authorizationdb", "write", YouTubeGuardPaths.authorizationRight],
@@ -226,7 +125,7 @@ enum VaultyGuardInstaller {
 
     private static func installLaunchDaemon() throws {
         let destination = URL(fileURLWithPath: YouTubeGuardPaths.launchDaemonPath)
-        try writeRootFile(try launchDaemonPropertyListData(), to: destination, mode: 0o644)
+        try writeRootFile(try VaultyGuardConfiguration.launchDaemonPropertyListData(), to: destination, mode: 0o644)
 
         _ = try? run(
             executable: "/bin/launchctl",
@@ -247,14 +146,12 @@ enum VaultyGuardInstaller {
         uid: uid_t,
         gid: gid_t
     ) throws {
-        let data = try nativeHostManifestData()
+        let data = try VaultyGuardConfiguration.nativeHostManifestData()
         for directory in nativeMessagingDirectories(userHome: userHome) {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             setOwnerRecursivelyForLeaf(directory, uid: uid, gid: gid)
             let manifest = directory.appendingPathComponent("\(YouTubeGuardPaths.nativeHostName).json")
-            try data.write(to: manifest, options: .atomic)
-            _ = chmod(manifest.path, 0o644)
-            _ = chown(manifest.path, uid, gid)
+            try CLIAtomicFileWriter.write(data, to: manifest, mode: 0o644, owner: uid, group: gid)
         }
     }
 
@@ -272,16 +169,7 @@ enum VaultyGuardInstaller {
     }
 
     private static func writeRootFile(_ data: Data, to destination: URL, mode: mode_t) throws {
-        let directory = destination.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let temporary = directory.appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
-        try data.write(to: temporary, options: .atomic)
-        _ = chmod(temporary.path, mode)
-        _ = chown(temporary.path, 0, 0)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
-        }
-        try FileManager.default.moveItem(at: temporary, to: destination)
+        try CLIAtomicFileWriter.write(data, to: destination, mode: mode, owner: 0, group: 0)
     }
 
     @discardableResult
