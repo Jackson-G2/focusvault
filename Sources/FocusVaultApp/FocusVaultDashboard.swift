@@ -58,6 +58,7 @@ struct FocusVaultDashboard: View {
         .task {
             model.refresh()
             tracker.start()
+            toolsManager.caffeinate.restoreEnabledState()
             intentionDraft = model.intention
             hasAppeared = true
         }
@@ -195,7 +196,7 @@ struct FocusVaultDashboard: View {
         case .learningGuide:
             learningGuideCard
         case .rhythm:
-            ProductivityCalendar(log: tracker.log)
+            EmptyView() // Retired; old saved placements are removed on load.
         }
     }
 

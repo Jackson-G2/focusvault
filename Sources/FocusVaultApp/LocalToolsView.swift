@@ -39,6 +39,9 @@ struct LocalToolsWidget: View {
                     .accessibilityIdentifier("manage-local-tools")
                 }
 
+                CaffeinateControl(controller: manager.caffeinate)
+                Divider().overlay(Tideglass.line)
+
                 if manager.tools.isEmpty {
                     Text("Add a command, local link, and expected port.")
                         .font(.system(size: 11, weight: .medium))
@@ -62,6 +65,33 @@ struct LocalToolsWidget: View {
         .sheet(isPresented: $manager.isPresentingAddTool) {
             AddLocalToolView()
                 .environmentObject(manager)
+        }
+    }
+}
+
+private struct CaffeinateControl: View {
+    @ObservedObject var controller: CaffeinateController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(isOn: Binding(get: { controller.isActive }, set: { controller.setEnabled($0) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Stay Awake")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Tideglass.ink)
+                    Text(controller.isStopping ? "Turning off…" : "caffeinate -dims")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Tideglass.muted)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(Tideglass.signal)
+            .disabled(controller.isStopping)
+            .help("Keeps the display and Mac awake while Vaulty is open, and remembers your choice after relaunch. Does not prevent lid-close sleep; -s requires AC power.")
+            .accessibilityIdentifier("toggle-stay-awake")
+            if let error = controller.errorText {
+                Text(error).font(.system(size: 10)).foregroundStyle(Tideglass.coral)
+            }
         }
     }
 }
@@ -96,17 +126,6 @@ private struct LocalToolCompactRow: View {
 
                 Spacer(minLength: 3)
 
-                if runtime.isOwned {
-                    Button {
-                        manager.stop(runtime)
-                    } label: {
-                        Label("End", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(GlassButtonStyle(tint: Tideglass.coral))
-                    .help("End the process group started by Vaulty")
-                    .accessibilityIdentifier("stop-tool-\(runtime.id.uuidString)")
-                }
-
                 Button {
                     manager.startOrOpen(runtime)
                 } label: {
@@ -118,9 +137,12 @@ private struct LocalToolCompactRow: View {
                     }
                 }
                 .buttonStyle(GlassButtonStyle(tint: tint, isProminent: true))
+                .fixedSize()
                 .disabled(runtime.state == .checking || runtime.state == .starting || runtime.state == .stopping)
                 .accessibilityIdentifier("launch-tool-\(runtime.id.uuidString)")
             }
+
+            LocalToolLifecycleControls(runtime: runtime)
 
             if let link = runtime.definition.links.first {
                 HStack(spacing: 7) {
@@ -166,6 +188,61 @@ private struct LocalToolCompactRow: View {
                     .foregroundStyle(Tideglass.muted)
                     .lineLimit(2)
             }
+        }
+    }
+}
+
+private struct LocalToolLifecycleControls: View {
+    @EnvironmentObject private var manager: LocalToolsManager
+    @ObservedObject var runtime: LocalToolRuntime
+    @State private var confirmingExternalBB = false
+    @State private var externalRestart = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if runtime.canCancel {
+                Button("Cancel") { manager.cancel(runtime) }
+                    .buttonStyle(GlassButtonStyle(tint: Tideglass.coral))
+                    .accessibilityIdentifier("cancel-tool-\(runtime.id.uuidString)")
+            } else if runtime.canControlOwned {
+                Button("Stop") { manager.stop(runtime) }
+                    .buttonStyle(GlassButtonStyle(tint: Tideglass.coral))
+                    .accessibilityIdentifier("stop-tool-\(runtime.id.uuidString)")
+                Button("Restart") { manager.restart(runtime) }
+                    .buttonStyle(GlassButtonStyle(tint: Tideglass.signal))
+                    .help("Stop the owned service, verify exit and port closure, then start a fresh process")
+                    .accessibilityIdentifier("restart-tool-\(runtime.id.uuidString)")
+            } else if runtime.state == .runningExternal, BBExternalLifecycle.matches(runtime.definition) {
+                Button("Stop") {
+                    externalRestart = false
+                    confirmingExternalBB = true
+                }
+                .buttonStyle(GlassButtonStyle(tint: Tideglass.coral))
+                .accessibilityIdentifier("stop-external-bb-\(runtime.id.uuidString)")
+                Button("Restart") {
+                    externalRestart = true
+                    confirmingExternalBB = true
+                }
+                .buttonStyle(GlassButtonStyle(tint: Tideglass.signal))
+                .accessibilityIdentifier("restart-external-bb-\(runtime.id.uuidString)")
+            }
+            Button { manager.refreshStatus(runtime) } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+                .buttonStyle(GlassButtonStyle(tint: Tideglass.muted))
+                .help("Refresh Status — does not restart the application")
+                .accessibilityLabel("Refresh Status")
+                .disabled(runtime.canCancel || runtime.state == .stopping)
+                .accessibilityIdentifier("refresh-tool-status-\(runtime.id.uuidString)")
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .alert(externalRestart ? "Restart bb?" : "Stop bb?", isPresented: $confirmingExternalBB) {
+            Button("Cancel", role: .cancel) {}
+            Button(externalRestart ? "Restart bb" : "Stop bb", role: .destructive) {
+                if externalRestart { manager.restart(runtime) } else { manager.stop(runtime) }
+            }
+        } message: {
+            Text("bb was started outside Vaulty. This interrupts running agent threads and terminals. Vaulty will use bb’s verified stop command; your saved conversations are not deleted.")
         }
     }
 }
@@ -234,10 +311,7 @@ private struct LocalToolsManagerView: View {
                             .foregroundStyle(Tideglass.muted)
                     }
                     Spacer()
-                    if runtime.isOwned {
-                        Button("End process") { manager.stop(runtime) }
-                            .buttonStyle(GlassButtonStyle(tint: Tideglass.coral))
-                    }
+                    LocalToolLifecycleControls(runtime: runtime)
                     Button(role: .destructive) {
                         do {
                             try manager.remove(runtime)
@@ -252,6 +326,9 @@ private struct LocalToolsManagerView: View {
                     .help("Remove tool from Vaulty")
                 }
 
+                Text(runtime.errorText ?? runtime.statusText)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(runtime.errorText == nil ? Tideglass.muted : Tideglass.coral)
                 ForEach(runtime.definition.links) { link in
                     HStack(spacing: 8) {
                         Text(link.name)

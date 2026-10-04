@@ -12,6 +12,13 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
     case learningGuide
     case rhythm
 
+    // Keep the retired raw value decodable so existing layouts migrate without
+    // resetting the user's remaining widget positions.
+    static let allCases: [DashboardWidgetKind] = [
+        .intention, .taskClock, .youtubeProtection, .shortFormProtection,
+        .localTools, .sleepCalculator, .learningGuide
+    ]
+
     var id: String { rawValue }
 
     var title: String {
@@ -267,7 +274,7 @@ final class DashboardLayoutModel: ObservableObject {
 
     private static func restore(_ stored: [DashboardWidgetPlacement]) -> [DashboardWidgetPlacement] {
         var seen = Set<DashboardWidgetKind>()
-        var result = stored.filter { seen.insert($0.kind).inserted }
+        var result = stored.filter { $0.kind != .rhythm && seen.insert($0.kind).inserted }
         for kind in DashboardWidgetKind.allCases where seen.insert(kind).inserted {
             var placement = kind.defaultPlacement
             while result.contains(where: { placement.intersects($0) }) {
@@ -282,7 +289,7 @@ final class DashboardLayoutModel: ObservableObject {
         guard let raw, !raw.isEmpty else { return nil }
         var seen = Set<DashboardWidgetKind>()
         var result = raw.compactMap(DashboardWidgetKind.init(rawValue:))
-            .filter { seen.insert($0).inserted }
+            .filter { $0 != .rhythm && seen.insert($0).inserted }
         for kind in DashboardWidgetKind.allCases where seen.insert(kind).inserted {
             result.append(kind)
         }

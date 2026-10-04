@@ -108,20 +108,21 @@ Inside the app:
 - Start the task clock to engage the YouTube blocker without another password; pause and resume it around real interruptions without spending paused time.
 - Let the restrained timer and completion moment carry the task; ending early never changes the vault automatically.
 - `Learn next` audits a redacted digest of local Hermes agent sessions, clusters current learning topics with GPT-5.6, researches YouTube transcripts, and opens grounded recommendations with notes and transcript-scoped Q&A.
-- `Tools` is a configurable local launcher. It ships with `bb hub` and an example workspace hub (Dashboard, Analytics, and Marketing), lets you add/remove tools, exposes copyable local links, opens healthy services, and offers `End` only for process groups Vaulty started.
+- `Tools` is a configurable local launcher. It ships with `bb hub` and an example workspace hub (Dashboard, Analytics, and Marketing), lets you add/remove tools, exposes copyable local links, opens healthy services, and provides Cancel, Stop, Restart, and a separate status-refresh control.
 - Update checks are opt-in per tool: npm package lookup or a read-only comparison between the local Git HEAD and the matching `origin` branch.
 - `YouTube blocker` uses the installed guard: lock immediately without a password, or authenticate, choose Grid Shot or Typing Sprint, win, and explicitly confirm a verified 45-minute unlock.
 - `Short-form blocker` is a separate control that blocks or unblocks TikTok, Instagram, YouTube, and Facebook hostnames. Because `/etc/hosts` cannot see URL paths, native short-form mode conservatively blocks those supported hosts completely.
 - `Sleep calculator` works backward from a wake time or forward from a bedtime using 90-minute cycles plus a 14-minute fall-asleep estimate.
 - `Channel Vault` opens the bundled browser-companion folder for selective filtering in Chrome, Edge, or Brave.
-- `Rhythm` shows a compact GitHub-style 13-week calendar. Each dot is one day; darker seafoam means more active minutes in coding/work apps.
-- The calendar is a personal tracker, not an analysis dashboard. It stores one local daily total, counts only active minutes while Vaulty is running, and ignores idle time.
+- Removing the former `Rhythm` widget preserves other widget positions and existing productivity data; it stays removed after Reset.
 
 The hosts guard remains the cross-browser backstop. In Chrome, Edge, or Brave, the browser companion reads the same lease through a read-only native-messaging host, redirects an already-playing YouTube tab when the deadline arrives, blocks Shorts throughout the lease, and falls back to the exact channel allowlist before native pairing. The extension can read state and request an early lock; it cannot request an unlock.
 
 The learning guide is on-demand and privacy-bounded. It does not run until clicked, sends only a compact redacted user-message digest and public transcript excerpts to `openai-codex/gpt-5.6-luna`, stores the result locally, and reports an honest partial state when the YouTube blocker or network blocks YouTube.
 
 ## Configurable local tools
+
+The Tools widget also includes a **Stay Awake** switch. It runs `/usr/bin/caffeinate -dims` while Vaulty is open; switching it off stops only Vaulty's own caffeinate process, and quitting Vaulty releases the assertions. It defaults off on first use, then remembers your On/Off choice across Vaulty relaunches and updates. It does not override other applications' sleep assertions or prevent lid-close sleep. The `-s` system-sleep assertion applies only on AC power.
 
 Tool definitions are stored locally at:
 
@@ -136,7 +137,11 @@ The initial tools are:
 - **bb hub** — starts `bb-app@latest` through `npx` when port `38886` is not already active; otherwise it safely reuses the existing service.
 - **Workspace hub** — runs a `npm run workspace` launcher from `~/Documents/Workspace` (edit the tool to point at your own project), linking to the hub, dashboard, analytics, and marketing pages. Its launcher reuses services already listening on `4567`, `5173`, `3000`, and `3001`.
 
-`End` appears only when Vaulty owns the supervisor process. The supervisor forwards termination to the child process group; the workspace launcher then stops only child services it started. A process found on an existing port is shown as running externally and is never terminated by Vaulty.
+`Cancel` is available during startup. `Stop` and `Restart` control services Vaulty owns, including failed launches that still have a process. Restart waits for the old supervisor and child groups to exit and for owned expected ports to close before starting a fresh process. Previously running workspace services stay untouched. `Refresh Status` checks service availability; it does not restart the service or reload an agent's instructions.
+
+Generic externally started services must be stopped in their original launcher. The default bb launcher has a narrow, explicitly confirmed recovery path using bb's own identity-verifying `bb-app stop --data-dir ~/.bb` command; Vaulty never kills an arbitrary listener by port. Stopping or restarting bb interrupts running agent work. The stop command uses only locally available software, with downloads disabled.
+
+BB app restart and provider-session context are different: BB assembles agent instructions when a provider session starts. A browser refresh does not reload that session's instructions. After changing instructions, check them in a newly started session if an existing conversation continues to use old context.
 
 ## Vaulty icon and mascot
 
