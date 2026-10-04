@@ -95,18 +95,19 @@ struct GPTUsageWidget: View {
                     .accessibilityIdentifier("refresh-gpt-usage")
                 }
                 if let snapshot = model.snapshot {
-                    if let percent = snapshot.usedPercent {
+                    if let usedPercent = snapshot.usedPercent {
+                        let percent = max(0, min(100, 100 - usedPercent))
                         HStack {
                             Text("Weekly allowance")
                             Spacer()
-                            Text("\(Int(percent.rounded()))% used")
+                            Text("\(Int(percent.rounded()))% left")
                                 .monospacedDigit()
                         }
                         .font(.system(size: 14, weight: .semibold))
                         ProgressView(value: percent, total: 100)
                             .tint(Tideglass.seafoam)
                             .accessibilityLabel("Weekly GPT allowance")
-                            .accessibilityValue("\(Int(percent.rounded())) percent used")
+                            .accessibilityValue("\(Int(percent.rounded())) percent remaining")
                         if let time = snapshot.weeklyResetsAt {
                             Text("Refreshes \(Self.format(time))")
                                 .font(.system(size: 11))

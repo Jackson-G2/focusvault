@@ -8,7 +8,7 @@ It keeps the original YouTube blocker and adds a separate short-form vault. Each
 
 ## GPT usage and saved resets
 
-The GPT usage dashboard card shows the signed-in ChatGPT/Codex account's weekly allowance used, its next automatic refresh, and the exact expiry of available saved Full resets. All reset dates are displayed in Brisbane time (AEST). The card refreshes every five minutes while the dashboard is open; its refresh button fetches immediately. If a refresh fails, the card labels its last successful result rather than presenting it as current. Unknown weekly limits or expiry details are shown as unavailable.
+The GPT usage dashboard card shows the signed-in ChatGPT/Codex account's weekly allowance remaining, its next automatic refresh, and the exact expiry of available saved Full resets. All reset dates are displayed in Brisbane time (AEST). The card refreshes every five minutes while the dashboard is open; its refresh button fetches immediately. If a refresh fails, the card labels its last successful result rather than presenting it as current. Unknown weekly limits or expiry details are shown as unavailable.
 
 Requires Python 3 and the Codex CLI signed in with ChatGPT. Vaulty uses the documented local `codex app-server` account reader; it does not start chats or redeem resets. The helper returns only the fields needed for display and does not copy authentication credentials. This allowance is the account's shared Codex/agentic usage budget, not a separate meter for every ChatGPT model.
 
