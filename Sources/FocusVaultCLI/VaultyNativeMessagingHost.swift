@@ -22,9 +22,12 @@ enum VaultyNativeMessagingHost {
             var currentRequestID: String?
             do {
                 guard let payload = try readMessage() else { return 0 }
-                let request = (try? JSONDecoder().decode(NativeHostRequest.self, from: payload))
-                currentRequestID = request?.id
-                if request?.command == "lock" {
+                guard let request = try? JSONDecoder().decode(NativeHostRequest.self, from: payload),
+                      request.command == "status" || request.command == "lock" else {
+                    throw YouTubeGuardError.malformedRequest
+                }
+                currentRequestID = request.id
+                if request.command == "lock" {
                     let storage = YouTubeGuardStorage()
                     let guardRequest = YouTubeGuardRequest(command: .lock)
                     storage.removeResponse(for: guardRequest.id)
@@ -40,7 +43,7 @@ enum VaultyNativeMessagingHost {
                     if !response.succeeded {
                         try writeMessage(JSONEncoder().encode(
                             NativeHostReply(
-                                id: request?.id,
+                                id: request.id,
                                 ok: false,
                                 installed: true,
                                 locked: true,
@@ -56,7 +59,7 @@ enum VaultyNativeMessagingHost {
                 let state = YouTubeGuardStorage().readState()
                 let now = Date()
                 let reply = NativeHostReply(
-                    id: request?.id,
+                    id: request.id,
                     ok: true,
                     installed: FileManager.default.isExecutableFile(atPath: YouTubeGuardPaths.helperPath),
                     locked: !state.isUnlocked(at: now),
@@ -89,7 +92,10 @@ enum VaultyNativeMessagingHost {
         guard length <= 1_048_576 else {
             throw YouTubeGuardError.requestTooLarge
         }
-        return try readExactly(Int(length))
+        guard length > 0, let payload = try readExactly(Int(length)) else {
+            throw YouTubeGuardError.malformedRequest
+        }
+        return payload
     }
 
     private static func readExactly(_ count: Int) throws -> Data? {

@@ -50,23 +50,16 @@ public struct ShortFormBlocker {
     /// section, so the independent YouTube blocker cannot be mistaken for
     /// short-form coverage.
     public func isBlocked() throws -> Bool {
-        guard try blocker.isBlocked() else { return false }
-        return try missingDomains().isEmpty
+        guard let contents = try blocker.managedContents() else { return false }
+        return missingDomains(in: contents).isEmpty
     }
 
     public func missingDomains() throws -> [String] {
-        let contents = try blocker.managedContents() ?? ""
-        return domains.filter { domain in
-            !Self.hasHostMapping(for: domain, in: contents)
-        }
+        missingDomains(in: try blocker.managedContents() ?? "")
     }
 
-    private static func hasHostMapping(for domain: String, in contents: String) -> Bool {
-        contents.split(whereSeparator: \.isNewline).contains { rawLine in
-            let line = rawLine.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: true).first ?? ""
-            let fields = line.split(whereSeparator: \.isWhitespace).map(String.init)
-            return fields.count >= 2 && fields[0] == "0.0.0.0" && fields[1] == domain
-        }
+    private func missingDomains(in contents: String) -> [String] {
+        HostsBlockCoverage.missingDomains(in: contents, required: domains)
     }
 }
 

@@ -80,13 +80,11 @@ enum VaultyGuardDaemon {
         for requestURL in storage.pendingRequestURLs() {
             defer { try? FileManager.default.removeItem(at: requestURL) }
             do {
-                let request = try storage.readRequest(at: requestURL)
-                let attributes = try FileManager.default.attributesOfItem(atPath: requestURL.path)
-                let ownerID = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value ?? UInt32.max
-                let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0o777
+                let snapshot = try storage.readRequestWithMetadata(at: requestURL)
+                let request = snapshot.request
                 let requestEngine = request.allowsRootOwnedAuthorization(
-                    ownerID: ownerID,
-                    posixPermissions: permissions
+                    ownerID: snapshot.ownerID,
+                    posixPermissions: snapshot.posixPermissions
                 ) ? rootAuthorizedEngine : engine
                 let response = try requestEngine.process(request)
                 guard response.succeeded else { continue }

@@ -31,7 +31,7 @@ Run the full local verification suite:
 make test
 ```
 
-This runs 92 Swift edge-case tests covering:
+This runs the dependency-free Swift edge-case suite covering:
 
 - Empty, missing, large, Unicode, LF, and CRLF hosts files
 - Exact round-trip restoration, including files without final newlines
@@ -97,11 +97,11 @@ Inside the app:
 - Set the exact task estimate in whole minutes, from 1 to 240, before starting the Task clock. The same clock works for short 10-minute tasks and longer 25-, 50-, or 90-minute stretches.
 - Use `Arrange` to open a four-column Apple-style canvas. Drag a widget’s orange move label to any grid slot, keep intentional gaps, drag its bottom-right handle to resize continuously, or use its menu for Compact/Wide/Tall/Large presets and keyboard-friendly nudges. Exact positions and dimensions persist locally; `Reset` restores the default canvas.
 - The first YouTube action installs a narrow local guard and asks for one administrator approval. After setup, `Lock now` never asks for a password.
-- `Unlock` requires fresh macOS administrator authorization, then opens a fixed-size task hub where you choose Grid Shot, Typing Sprint, or optional Signal Shift. Winning leaves the stable game sheet open; `Unlock YouTube` explicitly submits the one-use authorization. The sheet closes only after Vaulty verifies both an active 45-minute guard lease and the removal of the hosts-file block. A failed or unverified submission stays visible with a retry explanation.
+- `Unlock` opens a fixed-size task hub where you choose Grid Shot, Typing Sprint, or optional Signal Shift. Winning leaves the stable game sheet open; `Unlock YouTube` then requests fresh administrator approval. The sheet closes only after Vaulty verifies both an active 45-minute guard lease and the removal of the hosts-file block. A failed or unverified submission stays visible with a retry explanation.
 - Signal Shift is optional and never selected automatically or required for access.
 - Available unlock tasks:
   - **Grid Shot** — three balls on a 6×6 grid, ten seconds, +1 per hit, −1 per miss, target score 30.
-  - **Typing Sprint** — type an exact focus phrase within 24 seconds at a minimum 42 WPM.
+  - **Typing Sprint** — reproduce the exact finite focus phrase. Timing counts up from the first key; WPM is informational, with no speed or time cutoff.
   - **Signal Shift** — optional connected-cell spatial-memory path: a no-penalty three-cell practice room followed by progressive rooms. It is never required for access.
 - A successful unlock lasts exactly 45 minutes and cannot be extended in place. The root guard relocks even if the app closes; its in-memory monotonic deadline prevents a clock rollback from extending the session, and a guard restart fails closed.
 - The games are deliberate friction, not a claim to improve general intelligence.
@@ -110,7 +110,7 @@ Inside the app:
 - `Learn next` audits a redacted digest of local Hermes agent sessions, clusters current learning topics with GPT-5.6, researches YouTube transcripts, and opens grounded recommendations with notes and transcript-scoped Q&A.
 - `Tools` is a configurable local launcher. It ships with `bb hub` and an example workspace hub (Dashboard, Analytics, and Marketing), lets you add/remove tools, exposes copyable local links, opens healthy services, and provides Cancel, Stop, Restart, and a separate status-refresh control.
 - Update checks are opt-in per tool: npm package lookup or a read-only comparison between the local Git HEAD and the matching `origin` branch.
-- `YouTube blocker` uses the installed guard: lock immediately without a password, or authenticate, choose Grid Shot or Typing Sprint, win, and explicitly confirm a verified 45-minute unlock.
+- `YouTube blocker` uses the installed guard: lock immediately without a password, or choose an unlock task, win, then explicitly confirm and authenticate a verified 45-minute unlock.
 - `Short-form blocker` is a separate control that blocks or unblocks TikTok, Instagram, YouTube, and Facebook hostnames. Because `/etc/hosts` cannot see URL paths, native short-form mode conservatively blocks those supported hosts completely.
 - `Sleep calculator` works backward from a wake time or forward from a bedtime using 90-minute cycles plus a 14-minute fall-asleep estimate.
 - `Channel Vault` opens the bundled browser-companion folder for selective filtering in Chrome, Edge, or Brave.
@@ -222,7 +222,7 @@ Use the bundled browser companion if you want an already-open YouTube tab to be 
 5. Keep the extension enabled. Its pinned development key gives it the stable ID required by native messaging.
 6. Complete Vaulty’s one-time guard setup from the app. Setup installs the read-only native-host manifests for Chrome, Edge, and Brave.
 
-When paired, the extension enforces the root guard’s lock/lease state and never accepts an unlock command. Its popup can request `Lock now`, while `Unlock` always returns to the native app for password, a user-selected Grid Shot or Typing Sprint task, and an explicit verified `Unlock YouTube` confirmation. YouTube Shorts remain blocked during a long-form YouTube lease.
+When paired, the extension enforces the root guard’s lock/lease state and never accepts an unlock command. Its popup can request `Lock now`, while `Unlock` returns to the native app to choose a task, win, then explicitly confirm `Unlock YouTube` with fresh administrator approval. YouTube Shorts remain blocked during a long-form YouTube lease.
 
 Before native pairing, the companion retains its exact channel allowlist fallback. The defaults are Alex Hormozi (`@AlexHormozi`) and MoreMozi (`@MoreMozi`); unknown owners, feeds, search, playlists, and impersonators fail closed. Once paired, losing the native host also fails closed instead of silently reverting to a weaker mode.
 
@@ -284,6 +284,13 @@ vaulty short-form status  Show whether the short-form blocker is engaged.
 vaulty allowlist  Show the default selective YouTube channels.
 vaulty version    Print the installed version.
 ```
+
+## Architecture and refactor verification
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, local data compatibility,
+and the test/performance workflow. `make verify` runs the full local gate;
+`make benchmark` measures refresh notifications with temporary hosts and isolated
+preferences. Benchmark wall times are diagnostic, not CI pass/fail thresholds.
 
 ## License
 

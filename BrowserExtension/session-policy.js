@@ -13,8 +13,11 @@
       return { state: "fallback", reason: "native-guard-unavailable" };
     }
 
-    const unlockUntil = Number(status.unlockUntil || 0);
-    if (status.locked !== false || unlockUntil <= now) {
+    // Never coerce strings/objects or accept NaN/Infinity as an open lease.
+    const unlockUntil = status.unlockUntil;
+    if ((status.ok !== undefined && status.ok !== true) ||
+        status.locked !== false || !Number.isSafeInteger(unlockUntil) ||
+        !Number.isFinite(now) || unlockUntil <= now) {
       return { state: "block", reason: "youtube-session-locked" };
     }
 

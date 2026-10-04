@@ -194,7 +194,7 @@ private struct VideoRecommendationCard: View {
                             .foregroundStyle(Tideglass.seafoam)
                             .multilineTextAlignment(.trailing)
                             .lineLimit(2)
-                        Text("\(Int((recommendation.confidence * 100).rounded()))% match")
+                        Text("\(recommendation.matchPercent)% match")
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(Tideglass.muted)
                             .monospacedDigit()
@@ -318,7 +318,7 @@ private struct VideoQuestionPanel: View {
                     .disabled(research.isAsking || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
 
-                if let answer = research.answer {
+                if let answer = research.answer, research.answerVideoID == recommendation.id {
                     Text(answer)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Tideglass.ink)
@@ -326,7 +326,7 @@ private struct VideoQuestionPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let error = research.answerError {
+                if let error = research.answerError, research.answerVideoID == recommendation.id {
                     Text(error)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Tideglass.coral)

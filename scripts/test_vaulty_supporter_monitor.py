@@ -62,6 +62,19 @@ class SupporterMonitorTests(unittest.TestCase):
         self.assertEqual(report["refunds"][0]["refund_id"], "re_1")
         self.assertEqual(report["status"], "read-only")
 
+    def test_refunds_deduplicate_and_support_single_pass_generators(self):
+        session = {"id": "cs_fixture", "status": "complete", "payment_status": "paid",
+                   "currency": "aud", "amount_total": 2900, "payment_intent": "pi_fixture",
+                   "metadata": {"product": "vaulty-supporter"}}
+        good = {"id": "re_fixture", "status": "succeeded", "amount": 500,
+                "payment_intent": "pi_fixture"}
+        refunds = [good, dict(good), dict(good, status="failed", amount=700)]
+        for values in (refunds, iter(refunds)):
+            report = summarize(iter([session]), values)
+            self.assertEqual(report["refund_count"], 1)
+            self.assertEqual(report["refunded_aud"], "5.00")
+            self.assertEqual(report["net_aud"], "24.00")
+
     def test_price_id_can_identify_a_paid_order_without_metadata(self):
         sessions = [
             {
