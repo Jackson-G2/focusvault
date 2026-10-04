@@ -151,6 +151,8 @@ struct FocusVaultDashboard: View {
             SleepCalculatorWidget(showingSleepCalculator: $showingSleepCalculator)
         case .learningGuide:
             LearningGuideWidget(showingLearningGuide: $showingLearningGuide)
+        case .gptUsage:
+            GPTUsageWidget(startsServices: startsServices)
         case .rhythm:
             EmptyView() // Retired; old saved placements are removed on load.
         }

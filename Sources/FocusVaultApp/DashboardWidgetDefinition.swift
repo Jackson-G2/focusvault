@@ -8,13 +8,14 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
     case localTools
     case sleepCalculator
     case learningGuide
+    case gptUsage
     case rhythm
 
     // Keep the retired raw value decodable so existing layouts migrate without
     // resetting the user's remaining widget positions.
     static let allCases: [DashboardWidgetKind] = [
         .intention, .taskClock, .youtubeProtection, .shortFormProtection,
-        .localTools, .sleepCalculator, .learningGuide
+        .localTools, .sleepCalculator, .learningGuide, .gptUsage
     ]
 
     var id: String { rawValue }
@@ -28,6 +29,7 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
         case .localTools: return "Tools"
         case .sleepCalculator: return "Sleep"
         case .learningGuide: return "Learn next"
+        case .gptUsage: return "GPT usage"
         case .rhythm: return "Rhythm"
         }
     }
@@ -41,6 +43,7 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
         case .localTools: return DashboardWidgetSpan(width: 2, height: 2)
         case .sleepCalculator: return DashboardWidgetSpan(width: 2, height: 1)
         case .learningGuide: return DashboardWidgetSpan(width: 2, height: 1)
+        case .gptUsage: return DashboardWidgetSpan(width: 2, height: 2)
         case .rhythm: return DashboardWidgetSpan(width: 2, height: 2)
         }
     }
@@ -61,6 +64,8 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
             return DashboardWidgetPlacement(kind: self, column: 2, row: 4, width: 2, height: 1)
         case .learningGuide:
             return DashboardWidgetPlacement(kind: self, column: 2, row: 5, width: 2, height: 1)
+        case .gptUsage:
+            return DashboardWidgetPlacement(kind: self, column: 2, row: 6, width: 2, height: 2)
         case .rhythm:
             return DashboardWidgetPlacement(kind: self, column: 2, row: 6, width: 2, height: 2)
         }
