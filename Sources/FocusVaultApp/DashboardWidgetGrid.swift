@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 private struct DashboardPlacementKey: LayoutValueKey {
     static let defaultValue = DashboardWidgetKind.intention.defaultPlacement
@@ -67,16 +66,28 @@ struct DashboardCanvasLayout: Layout {
     }
 }
 
+/// Transient state for the widget currently under the cursor. The dragged
+/// widget never mutates the layout mid-drag: it follows the cursor through a
+/// visual offset while the grid shows the highlighted drop cell, and the move
+/// is committed once, on drop. Layout churn during a live gesture is what
+/// makes SwiftUI drags glitch, so the model is only touched at drag end.
+struct DashboardWidgetDragState: Equatable {
+    let kind: DashboardWidgetKind
+    var target: DashboardWidgetPlacement
+    var translation: CGSize
+}
+
 struct DashboardWidgetCanvas<Content: View>: View {
     @ObservedObject var model: DashboardLayoutModel
-    @Binding var draggedWidget: DashboardWidgetKind?
     let reduceMotion: Bool
     @ViewBuilder let content: (DashboardWidgetKind) -> Content
+
+    @State private var drag: DashboardWidgetDragState?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             if model.isEditing {
-                DashboardGridBackground(model: model)
+                DashboardGridBackground(model: model, drag: drag)
                     .allowsHitTesting(false)
             }
 
@@ -87,7 +98,7 @@ struct DashboardWidgetCanvas<Content: View>: View {
                         placement: placement,
                         isEditing: model.isEditing,
                         reduceMotion: reduceMotion,
-                        dragged: $draggedWidget,
+                        drag: $drag,
                         layoutModel: model
                     ) {
                         content(kind)
@@ -95,23 +106,20 @@ struct DashboardWidgetCanvas<Content: View>: View {
                     .dashboardPlacement(placement)
                 }
             }
-
-            if model.isEditing, draggedWidget != nil {
-                DashboardDropOverlay(
-                    model: model,
-                    draggedWidget: $draggedWidget
-                )
-            }
         }
         .animation(
             reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86),
             value: model.placements
         )
+        .onChange(of: model.isEditing) { editing in
+            if !editing { drag = nil }
+        }
     }
 }
 
 private struct DashboardGridBackground: View {
     @ObservedObject var model: DashboardLayoutModel
+    let drag: DashboardWidgetDragState?
 
     var body: some View {
         GeometryReader { proxy in
@@ -135,70 +143,20 @@ private struct DashboardGridBackground: View {
                             )
                     }
                 }
-            }
-        }
-    }
-}
 
-private struct DashboardDropOverlay: View {
-    @ObservedObject var model: DashboardLayoutModel
-    @Binding var draggedWidget: DashboardWidgetKind?
-
-    var body: some View {
-        GeometryReader { proxy in
-            let spacing = DashboardCanvasLayout.spacing
-            let columnWidth = (proxy.size.width - spacing * CGFloat(DashboardLayoutModel.columnCount - 1))
-                / CGFloat(DashboardLayoutModel.columnCount)
-            let rows = max(8, min(DashboardLayoutModel.maximumRows, model.occupiedRows + 1))
-
-            ZStack(alignment: .topLeading) {
-                ForEach(0..<rows, id: \.self) { row in
-                    ForEach(0..<DashboardLayoutModel.columnCount, id: \.self) { column in
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.white.opacity(0.001))
-                            .frame(width: columnWidth, height: DashboardCanvasLayout.rowHeight)
-                            .offset(
-                                x: CGFloat(column) * (columnWidth + spacing),
-                                y: CGFloat(row) * (DashboardCanvasLayout.rowHeight + spacing)
-                            )
-                            .onDrop(
-                                of: [UTType.text],
-                                delegate: DashboardCellDropDelegate(
-                                    column: column,
-                                    row: row,
-                                    dragged: $draggedWidget,
-                                    model: model
-                                )
-                            )
-                    }
+                if let drag {
+                    let rect = DashboardCanvasLayout.rect(for: drag.target, columnWidth: columnWidth)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Tideglass.signal.opacity(0.16))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Tideglass.signal.opacity(0.85), lineWidth: 1.5)
+                        }
+                        .frame(width: rect.width, height: rect.height)
+                        .offset(x: rect.minX, y: rect.minY)
                 }
             }
         }
-    }
-}
-
-private struct DashboardCellDropDelegate: DropDelegate {
-    let column: Int
-    let row: Int
-    @Binding var dragged: DashboardWidgetKind?
-    let model: DashboardLayoutModel
-
-    func dropEntered(info: DropInfo) {
-        guard let dragged else { return }
-        let placement = model.placement(for: dragged)
-        let centeredColumn = column - max(0, placement.width / 2)
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.84)) {
-            model.move(dragged, toColumn: centeredColumn, row: row)
-        }
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        dragged = nil
-        return true
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
     }
 }
 
@@ -206,96 +164,115 @@ struct DashboardDraggableWidget<Content: View>: View {
     let placement: DashboardWidgetPlacement
     let isEditing: Bool
     let reduceMotion: Bool
-    @Binding var dragged: DashboardWidgetKind?
+    @Binding var drag: DashboardWidgetDragState?
     let layoutModel: DashboardLayoutModel
     @ViewBuilder let content: () -> Content
 
-    @State private var jiggle = false
     @State private var resizeOrigin: DashboardWidgetSpan?
 
+    private static var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+    }
+
     private var kind: DashboardWidgetKind { placement.kind }
+    private var isDragging: Bool { drag?.kind == kind }
 
     var body: some View {
         GeometryReader { proxy in
-            content()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay(alignment: .topTrailing) {
-                    if isEditing { editBar }
+            ZStack(alignment: .topLeading) {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .clipShape(Self.shape)
+                    .allowsHitTesting(!isEditing)
+
+                if isEditing {
+                    // Transparent surface: in Arrange mode the whole widget is
+                    // the drag handle. Grab anywhere, drop on a highlighted cell.
+                    Color.clear
+                        .contentShape(Self.shape)
+                        .highPriorityGesture(moveGesture(in: proxy.size))
+                        .help("Drag to move \(kind.title)")
+                        .accessibilityLabel("Move \(kind.title) widget")
+                        .accessibilityIdentifier("move-widget-\(kind.rawValue)")
                 }
-                .overlay(alignment: .bottomTrailing) {
-                    if isEditing { resizeHandle(in: proxy.size) }
+            }
+            .contentShape(Self.shape)
+            .overlay(alignment: .topTrailing) {
+                if isEditing {
+                    editBar.allowsHitTesting(false)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay {
-                    if isEditing {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .strokeBorder(Tideglass.signal.opacity(0.55), lineWidth: 1.5)
-                            .allowsHitTesting(false)
-                    }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if isEditing { resizeHandle(in: proxy.size) }
+            }
+            .clipShape(Self.shape)
+            .overlay {
+                if isEditing {
+                    Self.shape
+                        .strokeBorder(
+                            Tideglass.signal.opacity(isDragging ? 0.92 : 0.55),
+                            lineWidth: isDragging ? 2 : 1.5
+                        )
+                        .allowsHitTesting(false)
                 }
-                .rotationEffect(
-                    isEditing && !reduceMotion
-                        ? .degrees(jiggle ? 0.22 : -0.22)
-                        : .zero
-                )
-                .scaleEffect(dragged == kind ? 0.97 : 1)
-                .opacity(dragged == kind ? 0.66 : 1)
-                .animation(.easeInOut(duration: 0.14), value: dragged)
+            }
+            .shadow(color: .black.opacity(isDragging ? 0.35 : 0), radius: isDragging ? 16 : 0)
+            .scaleEffect(isDragging ? 1.02 : 1)
+            .offset(isDragging ? (drag?.translation ?? .zero) : .zero)
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86),
+                value: isDragging
+            )
         }
-        .onAppear { updateJiggle() }
-        .onChange(of: isEditing) { _ in updateJiggle() }
+    }
+
+    /// Direct manipulation. The gesture only records the cursor translation and
+    /// computes the target cell from the widget's *fixed* start slot, so nothing
+    /// in the layout moves while the mouse button is down. On release the move
+    /// commits once and the offset springs to zero over the same curve the
+    /// layout animates with, so the widget hands off from cursor to cell.
+    private func moveGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 3)
+            .onChanged { value in
+                guard size.width > 1, size.height > 1 else { return }
+
+                let spacing = DashboardCanvasLayout.spacing
+                let columnWidth = (size.width - CGFloat(max(0, placement.width - 1)) * spacing)
+                    / CGFloat(max(1, placement.width))
+                let rowHeight = (size.height - CGFloat(max(0, placement.height - 1)) * spacing)
+                    / CGFloat(max(1, placement.height))
+
+                let originX = CGFloat(placement.column) * (columnWidth + spacing)
+                let originY = CGFloat(placement.row) * (rowHeight + spacing)
+                let column = Int(((originX + value.translation.width) / (columnWidth + spacing)).rounded())
+                let row = Int(((originY + value.translation.height) / (rowHeight + spacing)).rounded())
+
+                var target = placement
+                target.column = min(max(0, column), DashboardLayoutModel.columnCount - placement.width)
+                target.row = min(max(0, row), DashboardLayoutModel.maximumRows - placement.height)
+                drag = DashboardWidgetDragState(
+                    kind: kind,
+                    target: target,
+                    translation: value.translation
+                )
+            }
+            .onEnded { _ in
+                guard let state = drag, state.kind == kind else { return }
+                drag = nil
+                withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86)) {
+                    layoutModel.move(kind, toColumn: state.target.column, row: state.target.row)
+                }
+            }
     }
 
     private var editBar: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: "line.3.horizontal")
-                Text(kind.title)
-            }
-            .contentShape(Capsule())
-            .onDrag {
-                dragged = kind
-                return NSItemProvider(object: kind.rawValue as NSString)
-            }
-            .accessibilityLabel("Move \(kind.title) widget")
-            .accessibilityIdentifier("move-widget-\(kind.rawValue)")
-
-            Menu {
-                Section("Size") {
-                    ForEach(kind.sizeChoices) { choice in
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                                layoutModel.apply(choice, to: kind)
-                            }
-                        } label: {
-                            Label(
-                                "\(choice.name) · \(choice.span.width)×\(choice.span.height)",
-                                systemImage: placement.span == choice.span ? "checkmark" : "rectangle.resize"
-                            )
-                        }
-                    }
-                }
-                Section("Position") {
-                    Button("Move left") { layoutModel.nudge(kind, columns: -1, rows: 0) }
-                    Button("Move right") { layoutModel.nudge(kind, columns: 1, rows: 0) }
-                    Button("Move up") { layoutModel.nudge(kind, columns: 0, rows: -1) }
-                    Button("Move down") { layoutModel.nudge(kind, columns: 0, rows: 1) }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .frame(width: 20, height: 20)
-                    .contentShape(Circle())
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("Resize or move \(kind.title)")
-            .accessibilityIdentifier("widget-menu-\(kind.rawValue)")
+        HStack(spacing: 5) {
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+            Text(kind.title)
         }
         .font(.system(size: 9, weight: .bold, design: .rounded))
         .foregroundStyle(Tideglass.canvas)
-        .padding(.leading, 9)
-        .padding(.trailing, 5)
+        .padding(.horizontal, 9)
         .padding(.vertical, 5)
         .background(Tideglass.signal.opacity(0.96), in: Capsule())
         .padding(8)
@@ -337,16 +314,5 @@ struct DashboardDraggableWidget<Content: View>: View {
         .accessibilityLabel("Resize \(kind.title) widget")
         .accessibilityValue("\(placement.width) columns by \(placement.height) rows")
         .accessibilityIdentifier("resize-widget-\(kind.rawValue)")
-    }
-
-    private func updateJiggle() {
-        guard isEditing, !reduceMotion else {
-            jiggle = false
-            return
-        }
-        jiggle = false
-        withAnimation(.easeInOut(duration: 0.14).repeatForever(autoreverses: true)) {
-            jiggle = true
-        }
     }
 }

@@ -1,9 +1,11 @@
 import Foundation
 
 extension LocalToolsManager {
-    func refreshStatus(_ runtime: LocalToolRuntime) { refreshStatuses(only: runtime.id) }
+    func refreshStatus(_ runtime: LocalToolRuntime) {
+        refreshStatuses(only: runtime.id, recoveringReadyService: true)
+    }
 
-    func refreshStatuses(only id: UUID? = nil) {
+    func refreshStatuses(only id: UUID? = nil, recoveringReadyService: Bool = false) {
         for runtime in tools where (id == nil || runtime.id == id)
             && !runtime.canCancel && runtime.state != .stopping && runtime.pendingStatusProbe == nil {
             let generation = runtime.generation
@@ -27,7 +29,7 @@ extension LocalToolsManager {
                         }
                         self.clearOwnership(runtime)
                     } else {
-                        guard runtime.state != .failed else { return }
+                        guard runtime.state != .failed || (recoveringReadyService && primaryOpen) else { return }
                         guard self.isVerifiedSupervisor(runtime) else {
                             runtime.state = .failed
                             runtime.statusText = "Ownership retained · process identity not verified"
@@ -36,6 +38,7 @@ extension LocalToolsManager {
                         }
                         runtime.state = primaryOpen ? .runningOwned : .failed
                         runtime.statusText = primaryOpen ? "Running · started by Vaulty" : "Owned service not ready · Stop or Restart"
+                        if primaryOpen { runtime.errorText = nil }
                         return
                     }
                 }

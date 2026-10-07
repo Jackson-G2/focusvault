@@ -13,7 +13,6 @@ struct FocusVaultDashboard: View {
     @State private var showingLearningGuide = false
     @State private var showingSleepCalculator = false
     @StateObject private var dashboardLayout: DashboardLayoutModel
-    @State private var draggedWidget: DashboardWidgetKind?
     private let startsServices: Bool
 
     init() {
@@ -37,7 +36,6 @@ struct FocusVaultDashboard: View {
 
                     DashboardWidgetCanvas(
                         model: dashboardLayout,
-                        draggedWidget: $draggedWidget,
                         reduceMotion: reduceMotion
                     ) { kind in
                         dashboardWidget(kind)
@@ -88,12 +86,7 @@ struct FocusVaultDashboard: View {
 
     private var topBar: some View {
         HStack(spacing: 11) {
-            HStack(spacing: 10) {
-                VaultyMascot(size: 32, isProtected: model.isAnyVaultBlocked)
-                Text("Vaulty")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(Tideglass.ink)
-            }
+            MemoFilesButton()
 
             Spacer()
 
@@ -109,7 +102,6 @@ struct FocusVaultDashboard: View {
             Button {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
                     dashboardLayout.isEditing.toggle()
-                    if !dashboardLayout.isEditing { draggedWidget = nil }
                 }
             } label: {
                 Label(

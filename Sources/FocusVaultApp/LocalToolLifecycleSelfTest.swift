@@ -181,6 +181,20 @@ extension VaultyAppInteractionSelfTest {
         }
         print("PASS: failed owned service keeps Stop/Restart recovery and cannot duplicate through Retry")
 
+        let refreshedPID = runtime.ownedPID
+        runtime.state = .failed
+        runtime.errorText = "Stop or Restart the owned service before retrying."
+        manager.refreshStatus(runtime)
+        guard waitUntil(timeout: 4, condition: { runtime.state == .runningOwned }) else {
+            throw InteractionTestError.failed("explicit status refresh did not recover a verified ready owned service")
+        }
+        try checkApp(runtime.ownedPID == refreshedPID && runtime.errorText == nil,
+                     "status recovery changed ownership or retained a stale failure")
+        manager.startOrOpen(runtime)
+        try checkApp(runtime.ownedPID == refreshedPID && runtime.state == .runningOwned,
+                     "opening a recovered service launched a duplicate")
+        print("PASS: explicit status refresh recovers a verified ready service, clears its error, and Open preserves its PID")
+
         let reloaded = LocalToolCatalog(fileURL: catalog.fileURL).load(defaults: [])
         guard reloaded.count == 1, reloaded[0].name == "Fixture server" else {
             throw InteractionTestError.failed("local tool catalog did not reload its saved tool")
