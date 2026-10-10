@@ -9,13 +9,14 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
     case sleepCalculator
     case learningGuide
     case gptUsage
+    case filesFolders
     case rhythm
 
     // Keep the retired raw value decodable so existing layouts migrate without
     // resetting the user's remaining widget positions.
     static let allCases: [DashboardWidgetKind] = [
         .intention, .taskClock, .youtubeProtection, .shortFormProtection,
-        .localTools, .sleepCalculator, .learningGuide, .gptUsage
+        .localTools, .sleepCalculator, .learningGuide, .gptUsage, .filesFolders
     ]
 
     var id: String { rawValue }
@@ -30,6 +31,7 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
         case .sleepCalculator: return "Sleep"
         case .learningGuide: return "Learn next"
         case .gptUsage: return "GPT usage"
+        case .filesFolders: return "Files & Folders"
         case .rhythm: return "Rhythm"
         }
     }
@@ -44,6 +46,7 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
         case .sleepCalculator: return DashboardWidgetSpan(width: 2, height: 1)
         case .learningGuide: return DashboardWidgetSpan(width: 2, height: 1)
         case .gptUsage: return DashboardWidgetSpan(width: 2, height: 2)
+        case .filesFolders: return DashboardWidgetSpan(width: 2, height: 1)
         case .rhythm: return DashboardWidgetSpan(width: 2, height: 2)
         }
     }
@@ -66,6 +69,8 @@ enum DashboardWidgetKind: String, CaseIterable, Codable, Identifiable {
             return DashboardWidgetPlacement(kind: self, column: 2, row: 5, width: 2, height: 1)
         case .gptUsage:
             return DashboardWidgetPlacement(kind: self, column: 2, row: 6, width: 2, height: 2)
+        case .filesFolders:
+            return DashboardWidgetPlacement(kind: self, column: 0, row: 7, width: 2, height: 1)
         case .rhythm:
             return DashboardWidgetPlacement(kind: self, column: 2, row: 6, width: 2, height: 2)
         }

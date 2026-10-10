@@ -57,6 +57,23 @@ extension VaultyAppInteractionSelfTest {
             let version = 3
             let placements: [DashboardWidgetPlacement]
         }
+        var oldPlacements = DashboardWidgetKind.allCases
+            .filter { $0 != .filesFolders }.map(\.defaultPlacement)
+        if let index = oldPlacements.firstIndex(where: { $0.kind == .learningGuide }) {
+            oldPlacements[index].column = 0
+            oldPlacements[index].row = 7
+        }
+        defaults.set(try JSONEncoder().encode(OldLayout(placements: oldPlacements)), forKey: "before-files-section")
+        let withFiles = DashboardLayoutModel(defaults: defaults, key: "before-files-section", legacyKey: "unused")
+        for placement in oldPlacements {
+            try checkApp(withFiles.placement(for: placement.kind) == placement, "adding Files & Folders moved an existing widget")
+        }
+        try checkApp(withFiles.order.contains(.filesFolders), "existing layouts did not gain Files & Folders")
+        try checkApp(!hasDashboardOverlap(withFiles.placements), "Files & Folders overlaps existing widgets")
+        withFiles.move(.filesFolders, toColumn: 2, row: 12)
+        let reloadedFiles = DashboardLayoutModel(defaults: defaults, key: "before-files-section", legacyKey: "unused")
+        try checkApp(reloadedFiles.placement(for: .filesFolders) == withFiles.placement(for: .filesFolders), "Files & Folders position did not persist")
+        print("PASS: Files & Folders migrates without moving existing widgets and persists its position")
         var retired = DashboardWidgetKind.rhythm.defaultPlacement
         retired.row = 30
         defaults.set(try JSONEncoder().encode(OldLayout(placements: layout.placements + [retired])), forKey: "retired-rhythm-layout")

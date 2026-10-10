@@ -86,8 +86,6 @@ struct FocusVaultDashboard: View {
 
     private var topBar: some View {
         HStack(spacing: 11) {
-            MemoFilesButton()
-
             Spacer()
 
             if dashboardLayout.isEditing {
@@ -145,6 +143,8 @@ struct FocusVaultDashboard: View {
             LearningGuideWidget(showingLearningGuide: $showingLearningGuide)
         case .gptUsage:
             GPTUsageWidget(startsServices: startsServices)
+        case .filesFolders:
+            FilesFoldersWidget()
         case .rhythm:
             EmptyView() // Retired; old saved placements are removed on load.
         }

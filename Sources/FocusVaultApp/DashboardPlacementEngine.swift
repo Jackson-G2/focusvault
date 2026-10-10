@@ -18,11 +18,11 @@ enum DashboardPlacementEngine {
 
     static func restore(_ stored: [DashboardWidgetPlacement]) -> [DashboardWidgetPlacement] {
         var seen = Set<DashboardWidgetKind>()
-        var result = stored.filter { $0.kind != .rhythm && seen.insert($0.kind).inserted }.map(clamp)
+        var result = resolve(stored.filter { $0.kind != .rhythm && seen.insert($0.kind).inserted }.map(clamp))
         for kind in DashboardWidgetKind.allCases where seen.insert(kind).inserted {
-            result.append(kind.defaultPlacement)
+            result.append(firstFreePosition(for: kind.defaultPlacement, occupied: result))
         }
-        return resolve(result)
+        return result.sorted(by: readingOrder)
     }
 
     static func resolve(
