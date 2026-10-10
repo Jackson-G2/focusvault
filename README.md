@@ -1,8 +1,41 @@
 # Vaulty — macOS Website Blocker
 
+<p align="center">
+  <img src="Brand/Vaulty-Mascot.svg" alt="Vaulty the mascot" width="210">
+</p>
+
+<p align="center"><strong>Vault in. Get work done.</strong></p>
+
 Vaulty is a free, open-source macOS website blocker that helps you vault in, block distractions, and get work done.
 
-> Vault in. Get work done.
+<p align="center">
+  <img src="Brand/icon-256.png" alt="Vaulty app icon" width="76">
+  &nbsp;&nbsp;&nbsp;
+  <img src="Brand/Vaulty-Mascot-Monochrome.svg" alt="Vaulty mascot, monochrome" width="76">
+</p>
+
+**Meet Vaulty in 30 seconds.** It puts distracting sites in a vault while you work. Set a task, start the clock, and the vault locks. When the task is done, a quick unlock game opens the vault for a 45-minute break — no subscription, no account, no tracking.
+
+| | |
+|---|---|
+| 🛡️ **Two vaults** | YouTube blocker plus a separate short-form vault (TikTok, Instagram Reels, YouTube Shorts, Facebook Reels) |
+| ⏱ **Task clock** | Whole-minute estimates (1–240), pause/resume that never wastes your time |
+| 🎮 **Win your unlock** | Grid Shot, Typing Sprint, and the optional Signal Shift — deliberate friction, then a real 45-minute break |
+| 🖥 **Native macOS app** | SwiftUI with Liquid Glass on macOS 26+, material fallback on older Macs |
+| 🔒 **Honest protection** | Reversible `/etc/hosts` edits and a root guard that enforces the lease even if the app closes |
+| 🧰 **Extras** | Sleep calculator, local tool launcher, GPT usage card, and a learn-next guide |
+| 💸 **Free forever** | MIT licensed, no subscription, no telemetry |
+
+**Quick start:**
+
+```sh
+git clone https://github.com/Jackson-G2/focusvault.git
+cd focusvault
+make app
+open dist/Vaulty.app
+```
+
+Then write a short intention, set your task estimate, and hit the task clock. That's it.
 
 It keeps the original YouTube blocker and adds a separate short-form vault. Each feature writes its own clearly marked, reversible section to `/etc/hosts`; the short-form vault covers TikTok, Instagram, YouTube, and Facebook hostnames, while the browser companion adds path-level protection for Reels and Shorts. Vaulty is intentionally transparent rather than pretending to be impossible to bypass: a determined administrator can remove the block, use a VPN or secure DNS, or switch devices.
 
