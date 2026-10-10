@@ -37,6 +37,15 @@ open dist/Vaulty.app
 
 Then write a short intention, set your task estimate, and hit the task clock. That's it.
 
+### First run (about 2 minutes)
+
+1. **Open Vaulty** — `make app && open dist/Vaulty.app`. No installer, no account, nothing sent anywhere.
+2. **Write a one-line intention and set your estimate**, then start the Task clock. The first YouTube action installs a small local guard and asks for **one** administrator password — after that, `Lock now` never asks again. (Each unlock still requests a fresh approval; that's deliberate.)
+3. **Optionally add the browser companion** (Chrome, Edge, Brave) with the Channel Vault button. It filters Reels and Shorts by URL path. Without it, the hosts-level vault still covers every browser.
+4. **Optional extras work with no setup** — the sleep calculator and unlock games run immediately. The GPT usage card wants Python 3 and a signed-in Codex CLI; `Learn next` only runs when you click it.
+
+That's the entire setup. Everything below is the detailed reference.
+
 It keeps the original YouTube blocker and adds a separate short-form vault. Each feature writes its own clearly marked, reversible section to `/etc/hosts`; the short-form vault covers TikTok, Instagram, YouTube, and Facebook hostnames, while the browser companion adds path-level protection for Reels and Shorts. Vaulty is intentionally transparent rather than pretending to be impossible to bypass: a determined administrator can remove the block, use a VPN or secure DNS, or switch devices.
 
 ## GPT usage and saved resets
